@@ -112,6 +112,10 @@ def generate(data, settings, number):
     # Keep references before removing any optional paragraphs.
     business_paragraphs = list(d.paragraphs[:6])
     terms_paragraph = d.paragraphs[13]
+    recipient_paragraph = d.paragraphs[7]
+    sender_ppr = deepcopy(business_paragraphs[0]._p.pPr)
+    sender_run = next((run for run in business_paragraphs[0].runs if run._r.xpath('.//w:t')), None)
+    sender_rpr = deepcopy(sender_run._r.rPr) if sender_run is not None else None
     # Paragraph positions match both the original and sanitized template.
     for i,key in enumerate(('name','business','address','phone','email','website')):
         p=d.paragraphs[i]
@@ -183,6 +187,20 @@ def generate(data, settings, number):
                 paragraph.paragraph_format.line_spacing = Pt(1)
             else:
                 paragraph._p.getparent().remove(paragraph._p)
+    # Use the same paragraph and text formatting as the sender details.
+    previous = recipient_paragraph._p
+    for index, value in enumerate(recipient.split('\n')):
+        paragraph = recipient_paragraph if index == 0 else type(recipient_paragraph)(OxmlElement('w:p'), recipient_paragraph._parent)
+        if index:
+            previous.addnext(paragraph._p)
+        paragraph._p.clear_content()
+        existing = paragraph._p.pPr
+        if existing is not None:paragraph._p.remove(existing)
+        if sender_ppr is not None:paragraph._p.insert(0,deepcopy(sender_ppr))
+        run = paragraph.add_run(value)
+        if sender_rpr is not None:
+            run._r.insert(0,deepcopy(sender_rpr))
+        previous = paragraph._p
     # Keep the service table below floating logos as the text block shrinks.
     for wrap in d.part.element.xpath('.//wp:anchor/wp:wrapNone'):
         replacement = OxmlElement('wp:wrapSquare')

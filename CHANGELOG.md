@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.19 — 5 October 2026
+
+- Matched Invoice to company, contact, address and email formatting to the sender details from Settings.
+- Used the template sender font, size, weight, colour, alignment and paragraph spacing for recipient details.
+- Kept optional recipient fields collapsed when blank and preserved existing saved PDFs.
+
 ## v0.18 — 5 October 2026
 
 - Added a writable Invoice PDF folder path to the Docker template and setup instructions.
