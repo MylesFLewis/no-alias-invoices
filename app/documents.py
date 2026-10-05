@@ -106,30 +106,48 @@ def company_logo(document):
     except Exception as error:
         raise ValueError('Unable to load Company logo. Use a readable PNG/JPEG path inside the container or an accessible HTTP(S) URL.') from error
 
-def work_order_column(table):
+def service_columns(table, document):
     count=len(table.columns)
-    if count==5:
-        cell(table.rows[1].cells[1], 'Work order number')
-        return
-    if count!=4:raise ValueError('The service template must have four or five columns.')
-    total=sum(int(column.get(qn('w:w'))) for column in table._tbl.tblGrid)
-    widths=[round(total*fraction) for fraction in (.15,.16,.30,.26)]
-    widths.append(total-sum(widths))
+    if count not in (4,5,6):raise ValueError('The service template must have four, five or six columns.')
     grid=table._tbl.tblGrid
-    grid.insert(1,deepcopy(grid[0]))
+    # Preserve merged title and totals cells while upgrading older templates.
+    for index in ([1,4] if count==4 else [4] if count==5 else []):
+        old_count=len(grid)
+        grid.insert(index,deepcopy(grid[0]))
+        for row in table.rows:
+            cells=row._tr.tc_lst
+            if len(cells)==old_count:
+                added=deepcopy(cells[index-1]);cells[index-1].addnext(added);cell(_Cell(added,table),'')
+            else:
+                for element in cells:
+                    if element.grid_span>1:element.tcPr.gridSpan.val=element.grid_span+1
+    section=document.sections[0]
+    available=int((section.page_width-section.left_margin-section.right_margin)/635)
+    total=min(sum(int(column.get(qn('w:w'))) for column in grid),available)
+    widths=[round(total*fraction) for fraction in (.15,.13,.22,.20,.18)]
+    widths.append(total-sum(widths))
+    table.autofit=False
+    props=table._tbl.tblPr
+    tw=props.find(qn('w:tblW'));tw.set(qn('w:type'),'dxa');tw.set(qn('w:w'),str(total))
+    indent=props.find(qn('w:tblInd'))
+    if indent is not None:indent.set(qn('w:w'),'0')
     for column,width in zip(grid,widths):column.set(qn('w:w'),str(width))
     for row in table.rows:
-        cells=row._tr.tc_lst
-        if len(cells)==4:
-            added=deepcopy(cells[0]);cells[0].addnext(added);cell(_Cell(added,table),'')
-        else:
-            for element in cells:
-                if element.grid_span>1:element.tcPr.gridSpan.val=element.grid_span+1
+        for height in row._tr.get_or_add_trPr().findall(qn('w:trHeight')):
+            height.set(qn('w:hRule'),'atLeast')
         offset=0
         for element in row._tr.tc_lst:
             span=element.grid_span
             element.tcPr.tcW.w=sum(widths[offset:offset+span]);offset+=span
+            for tag in ('noWrap','tcFitText'):
+                for item in element.tcPr.findall(qn('w:'+tag)):element.tcPr.remove(item)
+            for paragraph in element.xpath('.//w:p'):
+                pp=paragraph.get_or_add_pPr()
+                wrap=pp.find(qn('w:wordWrap'))
+                if wrap is None:wrap=OxmlElement('w:wordWrap');pp.append(wrap)
+                wrap.set(qn('w:val'),'1')
     cell(table.rows[1].cells[1], 'Work order number')
+    cell(table.rows[1].cells[4], 'Other details')
 
 def generate(data, settings, number):
     private_template = Path(os.getenv('DATA_DIR','/data')) / 'invoice-template.docx'
@@ -175,7 +193,7 @@ def generate(data, settings, number):
     # ISO dates sort chronologically; Python's stable sort retains same-day order.
     lines = sorted(data['lines'], key=lambda line: date.fromisoformat(line['date']))
     table = d.tables[0]
-    work_order_column(table)
+    service_columns(table,d)
     # Clone a formatted service row, then replace the six template placeholders.
     prototype = deepcopy(table.rows[2]._tr)
     deposit_row, total_row = table.rows[8], table.rows[9]
@@ -186,9 +204,8 @@ def generate(data, settings, number):
         deposit_row._tr.addprevious(row_xml)
         row = _Row(row_xml, table)
         properties = row_xml.get_or_add_trPr()
-        if properties.find(qn('w:cantSplit')) is None:
-            properties.append(OxmlElement('w:cantSplit'))
-        values = [uk(line['date']), line.get('work_order_number',''), line['venue'], line['service'], money(line['fee'])]
+        for item in properties.findall(qn('w:cantSplit')):properties.remove(item)
+        values = [uk(line['date']), line.get('work_order_number',''), line['venue'], line['service'], line.get('other_details',''), money(line['fee'])]
         for c, v in zip(row.cells, values):
             cell(c, v)
     for row in list(table.rows)[:2]:

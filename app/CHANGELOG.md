@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.23 — 5 October 2026
+
+- Added an optional Other details field to each invoice service and a PDF column before Fee.
+- Fixed service-table widths to the page margins and enabled text wrapping and expanding row heights.
+- Allowed very tall service rows to continue across pages with repeated headers; retained compatibility with older templates.
+
 ## v0.22 — 5 October 2026
 
 - Added CSV batch venue import with a downloadable template and preview before saving.

@@ -107,3 +107,5 @@ In **Venues**, download the CSV template, fill it in, choose the file and select
 The headings are `Venue name,Address,Company name`. Company name must match an existing contact (matching ignores case); leave it blank for a venue available to all contacts. Addresses containing commas or line breaks must be quoted, as spreadsheet CSV exports do automatically. Save as UTF-8 CSV, with at most 1 MB and 1,000 venues.
 
 Matching venue names update existing entries rather than creating duplicates. Importing an assigned venue enables **Contact has assigned venues** for that contact. A venue already assigned to another contact must be released before importing a different assignment. All row errors must be fixed before the batch can be imported.
+
+Each invoice service has an optional **Other details** text field (up to 1,000 characters), shown in its own PDF column before Fee. Long text wraps within fixed columns; rows grow or continue onto another page with repeated headers.
