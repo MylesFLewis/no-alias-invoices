@@ -4,11 +4,11 @@ Build versioned Docker images for a local invoice app and update them through Un
 
 ## First GitHub setup
 
-Create a public repository named `no-alias-invoices`, with default branch `main`. Commit this repository's contents at its root, including `.github/workflows/publish.yml`, `scripts`, `unraid` and `releases`. Do not upload earlier private release ZIPs.
+This public repository is ready to use. The v0.4 image has passed startup and PDF generation tests. Do not upload earlier private release ZIPs.
 
 The workflow extracts the highest numeric release in `releases`, builds it, checks startup and PDF conversion, then publishes `ghcr.io/mylesflewis/no-alias-invoices:latest` and a version tag. The release ZIP contains the complete sanitized app source and is the build input.
 
-After the first successful run, open your profile's Packages page, select the image, open Package settings and change its visibility to **Public**. Public repositories do not automatically make newly published container packages public. No Docker Hub account or personal access token is needed for the build.
+The container image is public and can be pulled without authentication. No Docker Hub account or personal access token is needed for the build.
 
 Download the `unraid-template` artifact from the successful Actions run. It contains an XML template with your exact image address.
 
@@ -32,7 +32,7 @@ The app opens the same `invoices.sqlite3`. Existing settings, invoice numbering,
 4. In the Docker tab choose **Add Container**, select the `no-alias-invoices` user template, verify port 8085 and appdata `/mnt/user/appdata/no-alias-invoices`, then Apply.
 5. Open the WebUI and check settings, saved contacts, invoice history and a draft PDF.
 
-The bundled XML is a fallback: replace `YOUR_GITHUB_USERNAME` with your lowercase GitHub username before installing it. Use the image repository name if you choose a different repository name.
+The bundled XML in `unraid/my-no-alias-invoices.xml` is already configured for this repository and can also be used directly.
 
 ## Later updates
 
