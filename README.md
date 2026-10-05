@@ -47,3 +47,7 @@ A failed build leaves the published `latest` image in place. To roll back, edit 
 The web app has no login. Keep it on your trusted LAN or WireGuard VPN. No public router port or reverse proxy is required. The interface uses no external assets. PDF conversion runs in the container.
 
 Source: [GitHub container registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for all releases. The same history is available in the app under **Changelog**. Include updated release notes in each future version.
