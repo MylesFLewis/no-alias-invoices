@@ -47,7 +47,7 @@ def invoice(raw):
     lines=raw.get('lines',[])
     if not isinstance(lines,list) or not lines: raise ValueError('Add at least one service row.')
     for l in lines:
-        row={'date':valid_date(l.get('date','')),'venue':clean(l.get('venue',''),500),'service':clean(l.get('service',''),500),'fee':pence(l.get('fee',''))}
+        row={'date':valid_date(l.get('date','')),'work_order_number':clean(l.get('work_order_number',''),200),'venue':clean(l.get('venue',''),500),'service':clean(l.get('service',''),500),'fee':pence(l.get('fee',''))}
         if not row['venue'] or not row['service']: raise ValueError('Every row needs a venue and service.')
         if l.get('venue_id') is not None:
             row['venue_id']=int(l['venue_id'])

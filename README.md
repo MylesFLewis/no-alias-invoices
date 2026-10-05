@@ -95,3 +95,7 @@ If the copy fails, the invoice stays saved in History and the app reports the co
 Set **Payment term days** in Contacts to calculate an invoice due date using calendar days from **Invoice date**, not Date worked. For example, 5 October 2026 plus 30 days is due on 4 November 2026. Zero means due on the invoice date. Blank keeps the general payment terms in Settings and does not add a calculated due date.
 
 When a contact has payment days, its payment timing replaces the general payment-term wording on new PDFs. The contact term and calculated due date are stored with each saved invoice; changing a contact later does not change existing invoices. Whole numbers from 0 to 3650 are supported.
+
+## Work order numbers (v0.21)
+
+Each service has an optional free-text **Work order number**. New PDFs show it in a column immediately after **Date Worked**, with blank cells for services where it is omitted. Existing four-column templates are adapted automatically during generation; the stored Word template is not overwritten. Previously saved PDFs stay unchanged.

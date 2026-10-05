@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.21 — 5 October 2026
+
+- Added optional free-text Work order number to each service in New invoice.
+- Added a Work order number PDF column immediately after Date Worked, leaving the cell blank when omitted.
+- Kept dynamic service rows, repeated multi-page headers, date ordering and totals.
+- Adapted existing four-column private templates automatically and preserved existing saved PDFs.
+
 ## v0.20 — 5 October 2026
 
 - Added optional Payment term days to Contacts.

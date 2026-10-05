@@ -11,7 +11,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from docx import Document
-from docx.table import _Row
+from docx.table import _Row, _Cell
 
 BASE = Path(__file__).resolve().parent
 MAX_LOGO_BYTES = 10 * 1024 * 1024
@@ -106,6 +106,31 @@ def company_logo(document):
     except Exception as error:
         raise ValueError('Unable to load Company logo. Use a readable PNG/JPEG path inside the container or an accessible HTTP(S) URL.') from error
 
+def work_order_column(table):
+    count=len(table.columns)
+    if count==5:
+        cell(table.rows[1].cells[1], 'Work order number')
+        return
+    if count!=4:raise ValueError('The service template must have four or five columns.')
+    total=sum(int(column.get(qn('w:w'))) for column in table._tbl.tblGrid)
+    widths=[round(total*fraction) for fraction in (.15,.16,.30,.26)]
+    widths.append(total-sum(widths))
+    grid=table._tbl.tblGrid
+    grid.insert(1,deepcopy(grid[0]))
+    for column,width in zip(grid,widths):column.set(qn('w:w'),str(width))
+    for row in table.rows:
+        cells=row._tr.tc_lst
+        if len(cells)==4:
+            added=deepcopy(cells[0]);cells[0].addnext(added);cell(_Cell(added,table),'')
+        else:
+            for element in cells:
+                if element.grid_span>1:element.tcPr.gridSpan.val=element.grid_span+1
+        offset=0
+        for element in row._tr.tc_lst:
+            span=element.grid_span
+            element.tcPr.tcW.w=sum(widths[offset:offset+span]);offset+=span
+    cell(table.rows[1].cells[1], 'Work order number')
+
 def generate(data, settings, number):
     private_template = Path(os.getenv('DATA_DIR','/data')) / 'invoice-template.docx'
     d = Document(private_template if private_template.exists() else BASE / 'templates/invoice.docx')
@@ -150,6 +175,7 @@ def generate(data, settings, number):
     # ISO dates sort chronologically; Python's stable sort retains same-day order.
     lines = sorted(data['lines'], key=lambda line: date.fromisoformat(line['date']))
     table = d.tables[0]
+    work_order_column(table)
     # Clone a formatted service row, then replace the six template placeholders.
     prototype = deepcopy(table.rows[2]._tr)
     deposit_row, total_row = table.rows[8], table.rows[9]
@@ -162,7 +188,7 @@ def generate(data, settings, number):
         properties = row_xml.get_or_add_trPr()
         if properties.find(qn('w:cantSplit')) is None:
             properties.append(OxmlElement('w:cantSplit'))
-        values = [uk(line['date']), line['venue'], line['service'], money(line['fee'])]
+        values = [uk(line['date']), line.get('work_order_number',''), line['venue'], line['service'], money(line['fee'])]
         for c, v in zip(row.cells, values):
             cell(c, v)
     for row in list(table.rows)[:2]:
