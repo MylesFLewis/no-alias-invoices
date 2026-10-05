@@ -5,7 +5,21 @@
   <Registry>https://ghcr.io</Registry>
   <Network>bridge</Network>
   <Privileged>false</Privileged>
-  <Overview>Local invoice generator with saved recipients, venues and PDF history.</Overview>
+  <Overview>Local invoice generator with saved recipients, venues and PDF history.
+
+BUSINESS NAME
+Enter your business name in the Business name field. It appears at the top of the web UI and on new invoices. Leave blank to use the business name saved in the app.
+
+COMPANY LOGO - LOCAL FILE (EASIEST)
+Copy a PNG or JPEG into the host folder configured under Appdata. For the default mapping, /mnt/user/appdata/no-alias-invoices/logo.png on Unraid is /data/logo.png inside the container. Enter /data/logo.png in Company logo. If using a different Appdata folder, copy the image into that folder and still enter /data/logo.png. File names are case-sensitive.
+
+COMPANY LOGO - ANOTHER SHARE
+To keep your logo elsewhere, choose Add another Path, Port, Variable, Label or Device, select Path, set Host Path to your logo folder, Container Path to /logos, and Access Mode to Read Only. Then enter /logos/logo.png in Company logo. Do not enter the Unraid host path directly unless it has been mapped to the same container path.
+
+COMPANY LOGO - URL
+Alternatively, enter a direct HTTP(S) URL to a PNG or JPEG accessible from the container. Logos must be at most 5 MB and 20 million pixels. Leave Company logo blank to preserve the logo already in your private Word template.
+
+Click Apply, open the WebUI and generate a draft PDF to check the result. These settings affect new PDFs; saved invoices are unchanged. Docker Icon URL is separate and controls only the icon in Unraid's Docker list.</Overview>
   <Category>Productivity:</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <Support />
@@ -13,4 +27,7 @@
   <Config Name="Web port" Target="8080" Default="8085" Mode="tcp" Description="Local web interface" Type="Port" Display="always" Required="true" Mask="false">8085</Config>
   <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/no-alias-invoices" Mode="rw" Description="Settings, invoices and optional private template" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/no-alias-invoices</Config>
   <Config Name="Timezone" Target="TZ" Default="Europe/London" Mode="" Description="Timezone" Type="Variable" Display="always" Required="false" Mask="false">Europe/London</Config>
-<Icon>https://raw.githubusercontent.com/MylesFLewis/no-alias-invoices/main/assets/logo.png</Icon><Config Name="Business name" Target="BUSINESS_NAME" Default="" Mode="" Description="Business name shown at the top of the web UI and on new invoices. Blank uses existing app settings." Type="Variable" Display="always" Required="false" Mask="false" /><Config Name="Company logo" Target="COMPANY_LOGO" Default="" Mode="" Description="PNG/JPEG HTTP(S) URL or container path, e.g. /data/logo.png. Blank preserves the Word template logo." Type="Variable" Display="always" Required="false" Mask="false" /></Container>
+  <Icon>https://raw.githubusercontent.com/MylesFLewis/no-alias-invoices/main/assets/logo.png</Icon>
+  <Config Name="Business name" Target="BUSINESS_NAME" Default="" Mode="" Description="Business name shown at the top of the web UI and on new invoices. Blank uses existing app settings." Type="Variable" Display="always" Required="false" Mask="false" />
+  <Config Name="Company logo" Target="COMPANY_LOGO" Default="" Mode="" Description="PNG/JPEG HTTP(S) URL or container path, e.g. /data/logo.png. Blank preserves the Word template logo." Type="Variable" Display="always" Required="false" Mask="false" />
+</Container>
