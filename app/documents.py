@@ -112,6 +112,11 @@ def generate(data, settings, number):
     # Keep references before removing any optional paragraphs.
     business_paragraphs = list(d.paragraphs[:6])
     terms_paragraph = d.paragraphs[13]
+    date_paragraph = d.paragraphs[12]
+    terms = settings['terms']
+    days = data.get('payment_term_days')
+    if days is not None:
+        terms = 'Payment due on the invoice date.' if days == 0 else f'Payment due within {days} calendar days of the invoice date.'
     recipient_paragraph = d.paragraphs[7]
     sender_ppr = deepcopy(business_paragraphs[0]._p.pPr)
     sender_run = next((run for run in business_paragraphs[0].runs if run._r.xpath('.//w:t')), None)
@@ -131,7 +136,7 @@ def generate(data, settings, number):
             recipient += '\n' + value
     text(d.paragraphs[7], recipient)
     text(d.paragraphs[12], 'Date of invoice: ' + uk(data['date']))
-    text(terms_paragraph, 'Payment terms: ' + settings['terms'] if settings['terms'].strip() else '')
+    text(terms_paragraph, 'Payment terms: ' + terms if terms.strip() else '')
     for i,key in ((4,'email'),(5,'website')):
         for link in d.paragraphs[i]._p.xpath('.//w:hyperlink'):
             rid=link.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
@@ -206,7 +211,14 @@ def generate(data, settings, number):
         replacement = OxmlElement('wp:wrapSquare')
         replacement.set('wrapText', 'bothSides')
         wrap.getparent().replace(wrap, replacement)
-    if not settings['terms'].strip():
+    if data.get('due_date'):
+        due = type(date_paragraph)(OxmlElement('w:p'), date_paragraph._parent)
+        date_paragraph._p.addnext(due._p)
+        if date_paragraph._p.pPr is not None:due._p.insert(0,deepcopy(date_paragraph._p.pPr))
+        run = due.add_run('Date due: ' + uk(data['due_date']))
+        if date_paragraph.runs and date_paragraph.runs[0]._r.rPr is not None:
+            run._r.insert(0,deepcopy(date_paragraph.runs[0]._r.rPr))
+    if not terms.strip():
         terms_paragraph._p.getparent().remove(terms_paragraph._p)
     with tempfile.TemporaryDirectory() as temp:
         root=Path(temp); source=root/'invoice.docx'; d.save(source)

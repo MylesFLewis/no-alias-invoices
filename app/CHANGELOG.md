@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.20 — 5 October 2026
+
+- Added optional Payment term days to Contacts.
+- Calculated Date due from the invoice date plus the contact payment term in calendar days.
+- Used contact-specific payment timing when populated; blank retains general terms and zero means due on the invoice date.
+- Saved payment days and due dates with each new invoice so later contact edits do not change saved PDFs.
+
 ## v0.19 — 5 October 2026
 
 - Matched Invoice to company, contact, address and email formatting to the sender details from Settings.

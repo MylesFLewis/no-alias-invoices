@@ -89,3 +89,9 @@ New installations have an **Invoice PDF folder** path in the Docker template. Ch
 For an existing installation, update the image, then choose **Edit → Add another Path, Port, Variable, Label or Device → Path**. Set Name to **Invoice PDF folder**, Container Path to `/data/invoices`, Host Path to your desired folder and Access Mode to **Read/Write**, then Apply. Without that extra mapping, copies go into an `invoices` subfolder in your existing Appdata directory.
 
 If the copy fails, the invoice stays saved in History and the app reports the copy error. A different existing file with the same filename is preserved. Removing the latest test invoice also removes its folder copy when it still matches the saved PDF.
+
+## Contact payment terms (v0.20)
+
+Set **Payment term days** in Contacts to calculate an invoice due date using calendar days from **Invoice date**, not Date worked. For example, 5 October 2026 plus 30 days is due on 4 November 2026. Zero means due on the invoice date. Blank keeps the general payment terms in Settings and does not add a calculated due date.
+
+When a contact has payment days, its payment timing replaces the general payment-term wording on new PDFs. The contact term and calculated due date are stored with each saved invoice; changing a contact later does not change existing invoices. Whole numbers from 0 to 3650 are supported.

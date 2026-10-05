@@ -1,7 +1,7 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 import json, sqlite3, os, logging, re, tempfile
 from documents import generate
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS invoices (number INTEGER PRIMARY KEY, token TEXT UNIQ
     for column in ('contact_name', 'email'):
         if column not in columns:
             c.execute(f"ALTER TABLE contacts ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
-    for column, declaration in [('separate_numbering','INTEGER NOT NULL DEFAULT 0'),('invoice_prefix',"TEXT NOT NULL DEFAULT ''"),('next_invoice_number','INTEGER NOT NULL DEFAULT 1'),('has_assigned_venues','INTEGER NOT NULL DEFAULT 0'),('assigned_contact_id','INTEGER')]:
+    for column, declaration in [('separate_numbering','INTEGER NOT NULL DEFAULT 0'),('invoice_prefix',"TEXT NOT NULL DEFAULT ''"),('next_invoice_number','INTEGER NOT NULL DEFAULT 1'),('has_assigned_venues','INTEGER NOT NULL DEFAULT 0'),('assigned_contact_id','INTEGER'),('payment_term_days','INTEGER')]:
         if column not in columns:
             c.execute(f'ALTER TABLE contacts ADD COLUMN {column} {declaration}')
     invoice_columns = {row['name'] for row in c.execute('PRAGMA table_info(invoices)')}
@@ -54,6 +54,15 @@ def invoice(raw):
         result['lines'].append(row)
     if result['deposit']>sum(l['fee'] for l in result['lines']):raise ValueError('Deposit cannot exceed the fees.')
     return result
+def contact_payment_terms(c,data):
+    row=c.execute("SELECT payment_term_days FROM contacts WHERE kind='customer' AND name=?",(data['customer'],)).fetchone()
+    days=row['payment_term_days'] if row else None
+    data['payment_term_days']=days
+    try:
+        data['due_date']=(date.fromisoformat(data['date'])+timedelta(days=days)).isoformat() if days is not None else None
+    except OverflowError:
+        raise ValueError('The calculated due date falls outside the supported date range.')
+
 def validate_venues(c,data):
     contact=c.execute("SELECT id FROM contacts WHERE kind='customer' AND name=?",(data['customer'],)).fetchone()
     contact_id=contact['id'] if contact else None
@@ -187,6 +196,12 @@ class Handler(BaseHTTPRequestHandler):
                         last=c.execute('SELECT COALESCE(MAX(sequence_number),0) FROM invoices WHERE contact_id=? AND number_prefix=?',(contact_id,prefix)).fetchone()[0]
                         if next_number<=last:raise ValueError('Next number must be higher than saved invoices for this contact and prefix.')
                     c.execute('INSERT INTO contacts(kind,name,address,contact_name,email,separate_numbering,invoice_prefix,next_invoice_number) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(kind,name) DO UPDATE SET address=excluded.address, contact_name=excluded.contact_name, email=excluded.email, separate_numbering=excluded.separate_numbering, invoice_prefix=excluded.invoice_prefix,next_invoice_number=excluded.next_invoice_number',(kind,name,address,contact_name,email,int(enabled),prefix,next_number))
+                    if kind=='customer' and 'payment_term_days' in raw:
+                        days=raw['payment_term_days']
+                        if days in (None,''):days=None
+                        elif type(days) is not int or not 0<=days<=3650:
+                            raise ValueError('Payment term days must be a whole number between 0 and 3650, or blank.')
+                        c.execute("UPDATE contacts SET payment_term_days=? WHERE kind='customer' AND name=?",(days,name))
                     if kind=='customer' and 'has_assigned_venues' in raw:
                         has_venues=bool(raw['has_assigned_venues'])
                         assigned=raw.get('assigned_venue_ids',[]) if has_venues else []
@@ -214,6 +229,7 @@ class Handler(BaseHTTPRequestHandler):
                 if path in ('/api/preview','/api/invoices'):
                     data=invoice(raw)
                     if path=='/api/preview':
+                        contact_payment_terms(c,data)
                         validate_venues(c,data)
                         settings=json.loads(c.execute('SELECT body FROM settings').fetchone()[0])
                         return self.reply(200,generate(data,settings,'DRAFT'),'application/pdf','Invoice-preview.pdf')
@@ -222,6 +238,7 @@ class Handler(BaseHTTPRequestHandler):
                     c.execute('BEGIN IMMEDIATE')
                     old=c.execute('SELECT number,display_number,pdf FROM invoices WHERE token=?',(token,)).fetchone()
                     if old:return self.reply(200,saved_result(old['number'],old['display_number'],old['pdf']))
+                    contact_payment_terms(c,data)
                     validate_venues(c,data)
                     s=c.execute('SELECT * FROM settings').fetchone()
                     contact=c.execute("SELECT * FROM contacts WHERE kind='customer' AND name=?",(data['customer'],)).fetchone()
