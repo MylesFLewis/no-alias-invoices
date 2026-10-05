@@ -17,7 +17,7 @@ COMPANY LOGO - ANOTHER SHARE
 To keep your logo elsewhere, choose Add another Path, Port, Variable, Label or Device, select Path, set Host Path to your logo folder, Container Path to /logos, and Access Mode to Read Only. Then enter /logos/logo.png in Company logo. Do not enter the Unraid host path directly unless it has been mapped to the same container path.
 
 COMPANY LOGO - URL
-Alternatively, enter a direct HTTP(S) URL to a PNG or JPEG accessible from the container. Logos must be at most 5 MB and 20 million pixels. Leave Company logo blank to preserve the logo already in your private Word template.
+Alternatively, enter a direct HTTP(S) URL to a PNG or JPEG accessible from the container. Logos must be at most 10 MB and 20 million pixels. Leave Company logo blank to preserve the logo already in your private Word template.
 
 Click Apply, open the WebUI and generate a draft PDF to check the result. These settings affect new PDFs; saved invoices are unchanged. Docker Icon URL is separate and controls only the icon in Unraid's Docker list.</Overview>
   <Category>Productivity:</Category>

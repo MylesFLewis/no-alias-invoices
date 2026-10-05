@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.7 — 5 October 2026
+
+- Increased the company logo file-size limit from 5 MB to 10 MB for local files and HTTP(S) URLs.
+- Updated logo validation messages, the README and Unraid Overview instructions to show the new limit.
+- Kept the PNG/JPEG format and 20-million-pixel limits.
+
 ## v0.6 — 5 October 2026
 
 - Added a Business name container field for the web UI heading and new invoices. Blank falls back to existing settings.
