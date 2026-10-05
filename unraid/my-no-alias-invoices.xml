@@ -7,6 +7,9 @@
   <Privileged>false</Privileged>
   <Overview>Local invoice generator with saved recipients, venues and PDF history.
 
+INVOICE PDF FOLDER
+Completed invoices are also saved as number-first PDFs, for example LEA0169 Invoice.pdf. Set Invoice PDF folder to the Unraid folder where you want the copies. It maps to /data/invoices in the container and must be writable. Draft previews are not copied. Existing installations without this extra mapping save copies under their Appdata folder in an invoices subfolder; add a Path mapping to /data/invoices to choose another location.
+
 BUSINESS NAME
 Enter your business name in the Business name field. It appears at the top of the web UI and on new invoices. Leave blank to use the business name saved in the app.
 
@@ -26,6 +29,7 @@ Click Apply, open the WebUI and generate a draft PDF to check the result. These 
   <Project>https://github.com/mylesflewis/no-alias-invoices</Project>
   <Config Name="Web port" Target="8080" Default="8085" Mode="tcp" Description="Local web interface" Type="Port" Display="always" Required="true" Mask="false">8085</Config>
   <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/no-alias-invoices" Mode="rw" Description="Settings, invoices and optional private template" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/no-alias-invoices</Config>
+  <Config Name="Invoice PDF folder" Target="/data/invoices" Default="/mnt/user/appdata/no-alias-invoices/invoices" Mode="rw" Description="Folder for completed invoice PDFs, named LEA0169 Invoice.pdf. Must be writable. Draft previews are not copied." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/no-alias-invoices/invoices</Config>
   <Config Name="Timezone" Target="TZ" Default="Europe/London" Mode="" Description="Timezone" Type="Variable" Display="always" Required="false" Mask="false">Europe/London</Config>
   <Icon>https://raw.githubusercontent.com/MylesFLewis/no-alias-invoices/main/assets/logo.png</Icon>
   <Config Name="Business name" Target="BUSINESS_NAME" Default="" Mode="" Description="Business name shown at the top of the web UI and on new invoices. Blank uses existing app settings." Type="Variable" Display="always" Required="false" Mask="false" />

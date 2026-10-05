@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.18 — 5 October 2026
+
+- Added a writable Invoice PDF folder path to the Docker template and setup instructions.
+- Saved completed invoice copies with number-first filenames such as LEA0169 Invoice.pdf; draft previews are excluded.
+- Used appdata/invoices when no separate folder is mapped and retained device downloads and History.
+- Reported folder-copy failures without losing saved invoices; retries repair copies without advancing counters.
+- Removed matching exported PDFs when removing the latest test invoice, preserving files that were changed externally.
+
 ## v0.17 — 5 October 2026
 
 - Added Contact has assigned venues with a saved-venue selection list.

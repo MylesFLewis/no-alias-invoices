@@ -79,3 +79,13 @@ In **Contacts**, tick **Contact has assigned venues**, select saved venues and s
 The invoice Venue dropdown shows the selected contact’s assigned venues plus all unassigned venues. Other contacts cannot select its assigned venues. Switching Invoice to refreshes every service dropdown and clears selections that are no longer available.
 
 To release a venue, untick it in the contact’s selection list and save. Unticking **Contact has assigned venues** and saving releases all of that contact’s venues. Unassigned venues are available to all contacts. Existing invoices and their PDFs are preserved.
+
+## Invoice PDF folder (v0.18)
+
+Completed invoices are copied to a writable folder, named **LEA0169 Invoice.pdf** (or **0169 Invoice.pdf** for main numbering). Device downloads and History remain available. Draft previews are not copied. Older invoices are not exported automatically.
+
+New installations have an **Invoice PDF folder** path in the Docker template. Choose your Unraid folder; its container path is `/data/invoices`, with Read/Write access. The default is `/mnt/user/appdata/no-alias-invoices/invoices`.
+
+For an existing installation, update the image, then choose **Edit → Add another Path, Port, Variable, Label or Device → Path**. Set Name to **Invoice PDF folder**, Container Path to `/data/invoices`, Host Path to your desired folder and Access Mode to **Read/Write**, then Apply. Without that extra mapping, copies go into an `invoices` subfolder in your existing Appdata directory.
+
+If the copy fails, the invoice stays saved in History and the app reports the copy error. A different existing file with the same filename is preserved. Removing the latest test invoice also removes its folder copy when it still matches the saved PDF.

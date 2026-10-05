@@ -25,7 +25,7 @@ def post_json(path,body):
 post_json('/api/contacts',contact)
 data['customer']='Numbering Test';data['token']='smoke-contact-numbering'
 saved=post_json('/api/invoices',data)
-assert saved['number']=='TEST-0169'
+assert saved['number']=='TEST-0169' and 'warning' not in saved
 assert post_json('/api/invoices',data)==saved
 with urllib.request.urlopen(URL+'/api/state') as r:state=json.load(r)
 assert state['next']=='0001' and state['contacts'][0]['next_invoice_number']==170

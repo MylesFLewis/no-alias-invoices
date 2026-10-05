@@ -3,7 +3,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from datetime import date
 from decimal import Decimal, InvalidOperation
-import json, sqlite3, os, logging, re
+import json, sqlite3, os, logging, re, tempfile
 from documents import generate
 BASE=Path(__file__).resolve().parent
 DATA=Path(os.getenv('DATA_DIR','/data')); DATA.mkdir(parents=True,exist_ok=True)
@@ -64,6 +64,46 @@ def validate_venues(c,data):
             raise ValueError('A selected venue is not available for this contact. Refresh and choose another venue.')
         line['venue']=venue['name']+(', '+venue['address'] if venue['address'] else '')
 
+def invoice_file(number):
+    if not re.fullmatch(r'[A-Za-z0-9_-]+',number):raise ValueError('Invalid invoice filename.')
+    return DATA / 'invoices' / f'{number} Invoice.pdf'
+
+def export_invoice(number,pdf):
+    temporary=None
+    try:
+        target=invoice_file(number)
+        target.parent.mkdir(parents=True,exist_ok=True)
+        if target.exists():
+            if target.read_bytes()==pdf:return None
+            raise OSError('A different file already exists with this invoice filename.')
+        with tempfile.NamedTemporaryFile(dir=target.parent,prefix='.invoice-',suffix='.tmp',delete=False) as output:
+            temporary=Path(output.name);os.fchmod(output.fileno(),0o644);output.write(pdf);output.flush();os.fsync(output.fileno())
+        os.replace(temporary,target)
+        return None
+    except (OSError,ValueError):
+        logging.exception('Invoice folder copy failed for %s',number)
+        return 'Invoice saved in History, but the folder copy failed. Check the Invoice PDF folder mapping, permissions and existing files. Download it from History if needed.'
+    finally:
+        if temporary is not None:
+            try:temporary.unlink(missing_ok=True)
+            except OSError:logging.exception('Temporary invoice copy cleanup failed')
+
+def remove_export(number,pdf):
+    try:
+        target=invoice_file(number)
+        if target.exists() and target.read_bytes()==pdf:target.unlink()
+        elif target.exists():return 'Test invoice removed from History, but its folder copy was kept because the file had changed.'
+    except (OSError,ValueError):
+        logging.exception('Test invoice folder cleanup failed')
+        return 'Test invoice removed from History, but its folder copy could not be removed. Delete that test PDF from the invoice folder before reusing its number.'
+    return None
+
+def saved_result(identifier,number,pdf):
+    result={'id':identifier,'number':number}
+    warning=export_invoice(number,pdf)
+    if warning:result['warning']=warning
+    return result
+
 class Handler(BaseHTTPRequestHandler):
     def reply(self,status,body,kind='application/json',name=None):
         if kind=='application/json':body=json.dumps(body).encode()
@@ -83,7 +123,7 @@ class Handler(BaseHTTPRequestHandler):
             m=re.fullmatch(r'/api/invoices/(\d+)/pdf',path)
             if m:
                 r=c.execute('SELECT pdf,display_number FROM invoices WHERE number=?',(int(m[1]),)).fetchone()
-                if r:return self.reply(200,r['pdf'],'application/pdf',f"Invoice-{r['display_number']}.pdf")
+                if r:return self.reply(200,r['pdf'],'application/pdf',f"{r['display_number']} Invoice.pdf")
             if path=='/api/backup':
                 import tempfile
                 with tempfile.TemporaryDirectory() as t:
@@ -121,7 +161,10 @@ class Handler(BaseHTTPRequestHandler):
                         c.execute('UPDATE contacts SET next_invoice_number=? WHERE id=?',(sequence,latest['contact_id']))
                     c.execute('DELETE FROM invoices WHERE number=?',(identifier,))
                     c.commit()
-                    return self.reply(200,{'next':latest['display_number']})
+                    result={'next':latest['display_number']}
+                    warning=remove_export(latest['display_number'],latest['pdf'])
+                    if warning:result['warning']=warning
+                    return self.reply(200,result)
                 if path=='/api/contacts':
                     kind=raw.get('kind');name=clean(raw.get('name',''),200);address=clean(raw.get('address',''),500)
                     if kind not in ('customer','venue') or not name:raise ValueError('Enter a name.')
@@ -177,8 +220,8 @@ class Handler(BaseHTTPRequestHandler):
                     token=clean(raw.get('token',''),100)
                     if not token:raise ValueError('Missing save token')
                     c.execute('BEGIN IMMEDIATE')
-                    old=c.execute('SELECT number,display_number FROM invoices WHERE token=?',(token,)).fetchone()
-                    if old:return self.reply(200,{'id':old['number'],'number':old['display_number']})
+                    old=c.execute('SELECT number,display_number,pdf FROM invoices WHERE token=?',(token,)).fetchone()
+                    if old:return self.reply(200,saved_result(old['number'],old['display_number'],old['pdf']))
                     validate_venues(c,data)
                     s=c.execute('SELECT * FROM settings').fetchone()
                     contact=c.execute("SELECT * FROM contacts WHERE kind='customer' AND name=?",(data['customer'],)).fetchone()
@@ -196,7 +239,7 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         c.execute('UPDATE settings SET next_number=? WHERE id=1',(n+1,))
                     c.commit()
-                    return self.reply(201,{'id':identifier,'number':display})
+                    return self.reply(201,saved_result(identifier,display,pdf))
             self.reply(404,{'error':'Not found'})
         except (ValueError,TypeError,KeyError) as e:self.reply(400,{'error':str(e)})
         except Exception:
