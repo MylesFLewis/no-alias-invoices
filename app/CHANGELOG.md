@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.11 — 5 October 2026
+
+- Split Saved details into separate Venues and Contacts tabs with dedicated save and edit forms.
+- Kept Invoice to options connected to Contacts and service Venue options connected to Venues.
+- Preserved existing saved recipients, venues and addresses without a data migration.
+
 ## v0.10 — 5 October 2026
 
 - Made the service table match the number of services entered, with no unused blank service rows.

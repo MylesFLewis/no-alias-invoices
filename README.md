@@ -59,3 +59,7 @@ The Unraid template includes **Business name** (`BUSINESS_NAME`) and **Company l
 Company logo accepts a PNG/JPEG HTTP(S) URL or a file path **inside the container**. For example, place `logo.png` in `/mnt/user/appdata/no-alias-invoices/` on Unraid and enter `/data/logo.png`. `file:///data/logo.png` also works. Images must be at most 10 MB and 20 million pixels. Leave blank to keep the logo already in your private Word template. A configured logo replaces template artwork while retaining its position, or is placed at the upper left of the public template at the original template size (v0.8 onward). Existing saved PDFs stay unchanged.
 
 For an existing installation, update the container image to v0.6, then **Edit → Add another Path, Port, Variable, Label or Device → Variable** to add `BUSINESS_NAME` and `COMPANY_LOGO` (these fields are automatic on new installations using the updated XML). Apply the changes and refresh the app. The Docker Icon URL is separate from the invoice logo.
+
+## Saved contacts and venues (v0.11)
+
+Use **Contacts** to save and edit Invoice to recipients and their addresses. Use **Venues** to save and edit venues and their addresses. The New invoice dropdowns use these saved entries. Existing saved details appear in their respective tabs automatically after updating.
