@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS invoices (number INTEGER PRIMARY KEY, token TEXT UNIQ
     for column in ('contact_name', 'email'):
         if column not in columns:
             c.execute(f"ALTER TABLE contacts ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
-    for column, declaration in [('separate_numbering','INTEGER NOT NULL DEFAULT 0'),('invoice_prefix',"TEXT NOT NULL DEFAULT ''"),('next_invoice_number','INTEGER NOT NULL DEFAULT 1')]:
+    for column, declaration in [('separate_numbering','INTEGER NOT NULL DEFAULT 0'),('invoice_prefix',"TEXT NOT NULL DEFAULT ''"),('next_invoice_number','INTEGER NOT NULL DEFAULT 1'),('has_assigned_venues','INTEGER NOT NULL DEFAULT 0'),('assigned_contact_id','INTEGER')]:
         if column not in columns:
             c.execute(f'ALTER TABLE contacts ADD COLUMN {column} {declaration}')
     invoice_columns = {row['name'] for row in c.execute('PRAGMA table_info(invoices)')}
@@ -49,9 +49,21 @@ def invoice(raw):
     for l in lines:
         row={'date':valid_date(l.get('date','')),'venue':clean(l.get('venue',''),500),'service':clean(l.get('service',''),500),'fee':pence(l.get('fee',''))}
         if not row['venue'] or not row['service']: raise ValueError('Every row needs a venue and service.')
+        if l.get('venue_id') is not None:
+            row['venue_id']=int(l['venue_id'])
         result['lines'].append(row)
     if result['deposit']>sum(l['fee'] for l in result['lines']):raise ValueError('Deposit cannot exceed the fees.')
     return result
+def validate_venues(c,data):
+    contact=c.execute("SELECT id FROM contacts WHERE kind='customer' AND name=?",(data['customer'],)).fetchone()
+    contact_id=contact['id'] if contact else None
+    for line in data['lines']:
+        if 'venue_id' not in line:continue  # Preserve support for older API clients.
+        venue=c.execute("SELECT * FROM contacts WHERE kind='venue' AND id=?",(line['venue_id'],)).fetchone()
+        if not venue or venue['assigned_contact_id'] not in (None,contact_id):
+            raise ValueError('A selected venue is not available for this contact. Refresh and choose another venue.')
+        line['venue']=venue['name']+(', '+venue['address'] if venue['address'] else '')
+
 class Handler(BaseHTTPRequestHandler):
     def reply(self,status,body,kind='application/json',name=None):
         if kind=='application/json':body=json.dumps(body).encode()
@@ -132,6 +144,21 @@ class Handler(BaseHTTPRequestHandler):
                         last=c.execute('SELECT COALESCE(MAX(sequence_number),0) FROM invoices WHERE contact_id=? AND number_prefix=?',(contact_id,prefix)).fetchone()[0]
                         if next_number<=last:raise ValueError('Next number must be higher than saved invoices for this contact and prefix.')
                     c.execute('INSERT INTO contacts(kind,name,address,contact_name,email,separate_numbering,invoice_prefix,next_invoice_number) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(kind,name) DO UPDATE SET address=excluded.address, contact_name=excluded.contact_name, email=excluded.email, separate_numbering=excluded.separate_numbering, invoice_prefix=excluded.invoice_prefix,next_invoice_number=excluded.next_invoice_number',(kind,name,address,contact_name,email,int(enabled),prefix,next_number))
+                    if kind=='customer' and 'has_assigned_venues' in raw:
+                        has_venues=bool(raw['has_assigned_venues'])
+                        assigned=raw.get('assigned_venue_ids',[]) if has_venues else []
+                        if not isinstance(assigned,list) or any(type(identifier) is not int for identifier in assigned):
+                            raise ValueError('Choose valid saved venues.')
+                        contact_id=c.execute("SELECT id FROM contacts WHERE kind='customer' AND name=?",(name,)).fetchone()[0]
+                        for identifier in set(assigned):
+                            venue=c.execute("SELECT * FROM contacts WHERE id=? AND kind='venue'",(identifier,)).fetchone()
+                            if not venue:raise ValueError('A selected venue no longer exists. Refresh and try again.')
+                            if venue['assigned_contact_id'] not in (None,contact_id):
+                                raise ValueError('A selected venue is already assigned to another contact.')
+                        c.execute('UPDATE contacts SET has_assigned_venues=? WHERE id=?',(int(has_venues),contact_id))
+                        c.execute("UPDATE contacts SET assigned_contact_id=NULL WHERE kind='venue' AND assigned_contact_id=?",(contact_id,))
+                        for identifier in set(assigned):
+                            c.execute('UPDATE contacts SET assigned_contact_id=? WHERE id=?',(contact_id,identifier))
                     return self.reply(200,{'ok':True})
                 if path=='/api/settings':
                     settings={k:clean(raw.get(k,'')) for k in DEFAULTS}
@@ -144,6 +171,7 @@ class Handler(BaseHTTPRequestHandler):
                 if path in ('/api/preview','/api/invoices'):
                     data=invoice(raw)
                     if path=='/api/preview':
+                        validate_venues(c,data)
                         settings=json.loads(c.execute('SELECT body FROM settings').fetchone()[0])
                         return self.reply(200,generate(data,settings,'DRAFT'),'application/pdf','Invoice-preview.pdf')
                     token=clean(raw.get('token',''),100)
@@ -151,6 +179,7 @@ class Handler(BaseHTTPRequestHandler):
                     c.execute('BEGIN IMMEDIATE')
                     old=c.execute('SELECT number,display_number FROM invoices WHERE token=?',(token,)).fetchone()
                     if old:return self.reply(200,{'id':old['number'],'number':old['display_number']})
+                    validate_venues(c,data)
                     s=c.execute('SELECT * FROM settings').fetchone()
                     contact=c.execute("SELECT * FROM contacts WHERE kind='customer' AND name=?",(data['customer'],)).fetchone()
                     separate=contact is not None and bool(contact['separate_numbering'])

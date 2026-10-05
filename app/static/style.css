@@ -12,3 +12,5 @@ input[type="date"]::-webkit-date-and-time-value{min-width:0;text-align:left}
 .heading{flex-wrap:wrap}
 .record,header h1,#next{overflow-wrap:anywhere}
 .check input{flex-shrink:0}
+
+#contact-venue-options .check span{min-width:0;overflow-wrap:anywhere}

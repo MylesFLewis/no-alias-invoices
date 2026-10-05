@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.17 — 5 October 2026
+
+- Added Contact has assigned venues with a saved-venue selection list.
+- Filtered invoice venue dropdowns to the selected contact’s assigned venues plus all unassigned venues.
+- Reserved assigned venues for one contact and released them when assignments are disabled and saved.
+- Preserved existing contacts, venues and invoices and checked venue availability again when generating new invoices.
+
 ## v0.16 — 5 October 2026
 
 - Fixed date inputs overflowing their containers on mobile browsers.

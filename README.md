@@ -71,3 +71,11 @@ In **Contacts**, enable **Use separate invoice numbering for this contact**, ent
 The New invoice screen shows the next number for the selected contact. Saving advances only that contact's counter. Previews do not use a number. Leave the checkbox unticked to use the main number in Settings. Disabling separate numbering retains the contact's prefix and counter for later use. Existing invoices and PDFs retain their original numbers.
 
 The latest test invoice can still be removed from History, resetting the counter used by that invoice. If its counter or prefix has since been changed manually, automatic removal/reset is blocked to avoid overwriting those changes.
+
+## Assigned venues (v0.17)
+
+In **Contacts**, tick **Contact has assigned venues**, select saved venues and save the contact. Each venue can be assigned to one contact; venues reserved for another contact are shown but cannot be selected.
+
+The invoice Venue dropdown shows the selected contact’s assigned venues plus all unassigned venues. Other contacts cannot select its assigned venues. Switching Invoice to refreshes every service dropdown and clears selections that are no longer available.
+
+To release a venue, untick it in the contact’s selection list and save. Unticking **Contact has assigned venues** and saving releases all of that contact’s venues. Unassigned venues are available to all contacts. Existing invoices and their PDFs are preserved.
