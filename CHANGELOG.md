@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.9 — 5 October 2026
+
+- Sorted services in draft and newly saved invoice PDFs by Date worked, earliest first.
+- Kept services on the same date in their entered order.
+- Kept invoice date, amounts and existing saved PDFs unchanged.
+
 ## v0.8 — 5 October 2026
 
 - Positioned the company logo at the upper left of the public invoice template, matching the original template placement and size.
