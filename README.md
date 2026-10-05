@@ -99,3 +99,11 @@ When a contact has payment days, its payment timing replaces the general payment
 ## Work order numbers (v0.21)
 
 Each service has an optional free-text **Work order number**. New PDFs show it in a column immediately after **Date Worked**, with blank cells for services where it is omitted. Existing four-column templates are adapted automatically during generation; the stored Word template is not overwritten. Previously saved PDFs stay unchanged.
+
+### Import venues from CSV
+
+In **Venues**, download the CSV template, fill it in, choose the file and select **Preview import**. Check the preview, then select **Import venues**.
+
+The headings are `Venue name,Address,Company name`. Company name must match an existing contact (matching ignores case); leave it blank for a venue available to all contacts. Addresses containing commas or line breaks must be quoted, as spreadsheet CSV exports do automatically. Save as UTF-8 CSV, with at most 1 MB and 1,000 venues.
+
+Matching venue names update existing entries rather than creating duplicates. Importing an assigned venue enables **Contact has assigned venues** for that contact. A venue already assigned to another contact must be released before importing a different assignment. All row errors must be fixed before the batch can be imported.

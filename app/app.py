@@ -3,7 +3,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
-import json, sqlite3, os, logging, re, tempfile
+import json, sqlite3, os, logging, re, tempfile, csv, io, hashlib
 from documents import generate
 BASE=Path(__file__).resolve().parent
 DATA=Path(os.getenv('DATA_DIR','/data')); DATA.mkdir(parents=True,exist_ok=True)
@@ -113,6 +113,59 @@ def saved_result(identifier,number,pdf):
     if warning:result['warning']=warning
     return result
 
+def venue_csv_plan(c,content):
+    if not isinstance(content,str) or len(content.encode('utf-8'))>1024*1024:
+        raise ValueError('Choose a CSV file up to 1 MB.')
+    reader=csv.DictReader(io.StringIO(content.lstrip('\ufeff'),newline=''),strict=True)
+    try:headings=reader.fieldnames or []
+    except csv.Error as error:raise ValueError('Invalid CSV: '+str(error))
+    normalized=[heading.strip().casefold() for heading in headings]
+    expected=['venue name','address','company name']
+    if len(normalized)!=3 or set(normalized)!=set(expected):
+        raise ValueError('CSV headings must be Venue name, Address, Company name.')
+    contacts={};venues={}
+    for entry in c.execute('SELECT * FROM contacts'):
+        target=contacts if entry['kind']=='customer' else venues
+        target.setdefault(entry['name'].strip().casefold(),[]).append(dict(entry))
+    rows=[];seen=set()
+    try:
+        for raw in reader:
+            if len(rows)>=1000:raise ValueError('Import at most 1000 venues at a time.')
+            values={heading.strip().casefold():raw.get(heading) for heading in headings}
+            if all(value is not None and not value.strip() for value in values.values()) and None not in raw:continue
+            row={'row':reader.line_num,'name':values['venue name'] or '', 'address':values['address'] or '', 'company':values['company name'] or '', 'action':'Create','error':''}
+            rows.append(row)
+            try:
+                if None in raw or any(value is None for value in values.values()):raise ValueError('Row must contain exactly three columns.')
+                row['name']=clean(row['name'],200);row['address']=clean(row['address'],500);row['company']=clean(row['company'],200)
+                if not row['name']:raise ValueError('Venue name is required.')
+                key=row['name'].casefold()
+                if key in seen:raise ValueError('This venue is listed more than once in the CSV.')
+                seen.add(key)
+                matches=venues.get(key,[])
+                if len(matches)>1:raise ValueError('Multiple saved venues match this name; resolve the duplicates first.')
+                existing=matches[0] if matches else None
+                owner=None
+                if row['company']:
+                    matches=contacts.get(row['company'].casefold(),[])
+                    if not matches:raise ValueError('Company name does not match a saved contact.')
+                    if len(matches)>1:raise ValueError('Multiple contacts match this company name.')
+                    owner=matches[0];row['company']=owner['name']
+                owner_id=owner['id'] if owner else None
+                if existing and existing['assigned_contact_id'] not in (None,owner_id):
+                    raise ValueError('Venue is assigned to another contact. Release it from that contact before importing.')
+                row['venue_id']=existing['id'] if existing else None
+                row['contact_id']=owner_id
+                row['before']={'address':existing['address'],'owner':existing['assigned_contact_id']} if existing else None
+                if existing:
+                    row['name']=existing['name']
+                    row['action']='Unchanged' if existing['address']==row['address'] and existing['assigned_contact_id']==owner_id else 'Update'
+            except (ValueError,TypeError) as error:row['error']=str(error)
+    except csv.Error as error:raise ValueError('Invalid CSV: '+str(error))
+    if not rows:raise ValueError('The CSV contains no venue rows.')
+    fingerprint=hashlib.sha256(json.dumps(rows,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+    return dict(rows=rows,preview_hash=fingerprint,can_import=not any(row['error'] for row in rows),counts={label:sum(row['action']==label and not row['error'] for row in rows) for label in ['Create','Update','Unchanged']},errors=sum(bool(row['error']) for row in rows))
+
 class Handler(BaseHTTPRequestHandler):
     def reply(self,status,body,kind='application/json',name=None):
         if kind=='application/json':body=json.dumps(body).encode()
@@ -124,6 +177,7 @@ class Handler(BaseHTTPRequestHandler):
         if path in ('/','/app.js','/style.css'):
             file={'/':'index.html','/app.js':'app.js','/style.css':'style.css'}[path]
             return self.reply(200,(BASE/'static'/file).read_bytes(),{'/':'text/html; charset=utf-8','/app.js':'text/javascript; charset=utf-8','/style.css':'text/css; charset=utf-8'}[path])
+        if path=='/api/venues/csv-template':return self.reply(200,b'Venue name,Address,Company name\r\n','text/csv; charset=utf-8','venue-import-template.csv')
         if path=='/health':return self.reply(200,{'status':'ok'})
         with connection() as c:
             if path=='/api/state':
@@ -146,10 +200,28 @@ class Handler(BaseHTTPRequestHandler):
         if origin and urlparse(origin).netloc != self.headers.get('Host'):return self.reply(403,{'error':'Invalid origin'})
         if self.headers.get('Content-Type','').split(';')[0]!='application/json':return self.reply(415,{'error':'JSON required'})
         try:
+            path=urlparse(self.path).path
             size=int(self.headers.get('Content-Length','0'))
-            if not 0<size<=65536:raise ValueError('Invalid request size')
-            raw=json.loads(self.rfile.read(size));path=urlparse(self.path).path
+            limit=2*1024*1024 if path in ('/api/venues/csv-preview','/api/venues/csv-import') else 65536
+            if not 0<size<=limit:raise ValueError('Invalid request size')
+            raw=json.loads(self.rfile.read(size))
             with connection() as c:
+                if path in ('/api/venues/csv-preview','/api/venues/csv-import'):
+                    if path.endswith('csv-import'):c.execute('BEGIN IMMEDIATE')
+                    plan=venue_csv_plan(c,raw.get('csv',''))
+                    if path.endswith('csv-preview'):return self.reply(200,plan)
+                    if not plan['can_import']:raise ValueError('Fix all CSV errors before importing. No venues were changed.')
+                    if raw.get('preview_hash')!=plan['preview_hash']:
+                        raise ValueError('The CSV or saved details changed after the preview. Preview again before importing.')
+                    for row in plan['rows']:
+                        if row['venue_id'] is None:
+                            c.execute("INSERT INTO contacts(kind,name,address,assigned_contact_id) VALUES('venue',?,?,?)",(row['name'],row['address'],row['contact_id']))
+                        else:
+                            c.execute('UPDATE contacts SET address=?,assigned_contact_id=? WHERE id=?',(row['address'],row['contact_id'],row['venue_id']))
+                        if row['contact_id'] is not None:
+                            c.execute('UPDATE contacts SET has_assigned_venues=1 WHERE id=?',(row['contact_id'],))
+                    c.commit()
+                    return self.reply(200,{'counts':plan['counts']})
                 if path=='/api/invoices/remove-latest-test':
                     identifier=int(raw.get('id',raw.get('number',0)))
                     c.execute('BEGIN IMMEDIATE')

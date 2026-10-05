@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.22 — 5 October 2026
+
+- Added CSV batch venue import with a downloadable template and preview before saving.
+- Matched Company name to existing contacts and enabled assigned venues automatically; blank company names create shared venues.
+- Updated matching venues without duplicates and blocked conflicting assignments, invalid rows and stale previews.
+
 ## v0.21 — 5 October 2026
 
 - Added optional free-text Work order number to each service in New invoice.

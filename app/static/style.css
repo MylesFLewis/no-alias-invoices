@@ -14,3 +14,5 @@ input[type="date"]::-webkit-date-and-time-value{min-width:0;text-align:left}
 .check input{flex-shrink:0}
 
 #contact-venue-options .check span{min-width:0;overflow-wrap:anywhere}
+
+.csv-table-wrap{overflow-x:auto;max-width:100%;margin:16px 0}#venue-csv-table{border-collapse:collapse;width:100%;min-width:600px;font-size:14px}#venue-csv-table th,#venue-csv-table td{padding:10px;border:1px solid #445066;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;max-width:240px}.csv-error{color:#ffc1b8}
