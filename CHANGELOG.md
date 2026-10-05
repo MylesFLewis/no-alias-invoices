@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.16 — 5 October 2026
+
+- Fixed date inputs overflowing their containers on mobile browsers.
+- Allowed form fields and grid columns to shrink to the available width.
+- Wrapped headings and long saved details on narrow screens without changing invoice behaviour.
+
 ## v0.15 — 5 October 2026
 
 - Added optional per-contact invoice numbering with a prefix and editable next number.
