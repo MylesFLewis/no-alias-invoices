@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## v0.6 — 5 October 2026
 
+- Added a Business name container field for the web UI heading and new invoices. Blank falls back to existing settings.
+- Added a Company logo container field accepting PNG/JPEG URLs or local container paths for invoice PDFs. Blank keeps the template logo; configured logos replace existing artwork or appear in the header.
+- Added logo validation and clear errors for inaccessible or unsupported images.
 - Added the supplied No Alias logo as the Unraid container icon. This is a template change; existing containers need their Icon URL updated once.
 
 ## v0.5 — 5 October 2026

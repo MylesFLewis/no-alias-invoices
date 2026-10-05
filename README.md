@@ -51,3 +51,11 @@ Source: [GitHub container registry documentation](https://docs.github.com/en/pac
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for all releases. The same history is available in the app under **Changelog**. Include updated release notes in each future version.
+
+## Company branding (v0.6)
+
+The Unraid template includes **Business name** (`BUSINESS_NAME`) and **Company logo** (`COMPANY_LOGO`). Business name sets the web UI heading and the business line on new invoices; blank falls back to the app's saved business name.
+
+Company logo accepts a PNG/JPEG HTTP(S) URL or a file path **inside the container**. For example, place `logo.png` in `/mnt/user/appdata/no-alias-invoices/` on Unraid and enter `/data/logo.png`. `file:///data/logo.png` also works. Images must be at most 5 MB and 20 million pixels. Leave blank to keep the logo already in your private Word template. A configured logo replaces template artwork while retaining its position, or is added to the header of the blank public template. Existing saved PDFs stay unchanged.
+
+For an existing installation, update the container image to v0.6, then **Edit → Add another Path, Port, Variable, Label or Device → Variable** to add `BUSINESS_NAME` and `COMPANY_LOGO` (these fields are automatic on new installations using the updated XML). Apply the changes and refresh the app. The Docker Icon URL is separate from the invoice logo.
