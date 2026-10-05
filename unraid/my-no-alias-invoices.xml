@@ -1,0 +1,16 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Container version="2">
+  <Name>no-alias-invoices</Name>
+  <Repository>ghcr.io/mylesflewis/no-alias-invoices:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Overview>Local invoice generator with saved recipients, venues and PDF history.</Overview>
+  <Category>Productivity:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <Support />
+  <Project>https://github.com/mylesflewis/no-alias-invoices</Project>
+  <Config Name="Web port" Target="8080" Default="8085" Mode="tcp" Description="Local web interface" Type="Port" Display="always" Required="true" Mask="false">8085</Config>
+  <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/no-alias-invoices" Mode="rw" Description="Settings, invoices and optional private template" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/no-alias-invoices</Config>
+  <Config Name="Timezone" Target="TZ" Default="Europe/London" Mode="" Description="Timezone" Type="Variable" Display="always" Required="false" Mask="false">Europe/London</Config>
+</Container>
