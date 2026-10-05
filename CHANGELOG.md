@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added the supplied No Alias logo as the Unraid container icon. This is a template change; existing containers need their Icon URL updated once.
+
 ## v0.5 — 5 October 2026
 
 - Added a Changelog tab in the app with the complete release history.
