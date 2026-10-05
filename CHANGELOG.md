@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.12 — 5 October 2026
+
+- Displayed the selected contact address below Invoice to in new draft and saved PDFs when an address is present.
+- Kept Invoice to name-only when the contact address is blank and preserved multiline addresses.
+- Saved an address snapshot with each new invoice; existing saved PDFs remain unchanged.
+
 ## v0.11 — 5 October 2026
 
 - Split Saved details into separate Venues and Contacts tabs with dedicated save and edit forms.

@@ -29,7 +29,7 @@ def valid_date(v):
     date.fromisoformat(v); return v
 
 def invoice(raw):
-    result={'customer':clean(raw.get('customer','')),'date':valid_date(raw.get('date','')),'deposit':pence(raw.get('deposit',0)), 'lines':[]}
+    result={'customer':clean(raw.get('customer','')),'customer_address':clean(raw.get('customer_address',''),500),'date':valid_date(raw.get('date','')),'deposit':pence(raw.get('deposit',0)), 'lines':[]}
     if not result['customer']: raise ValueError('Choose or enter an invoice recipient.')
     lines=raw.get('lines',[])
     if not isinstance(lines,list) or not lines: raise ValueError('Add at least one service row.')
