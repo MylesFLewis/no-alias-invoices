@@ -6,7 +6,7 @@ import tempfile, subprocess, os, io
 from urllib.request import urlopen
 from urllib.parse import urlparse, unquote
 from PIL import Image
-from docx.shared import Inches
+from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
@@ -109,6 +109,9 @@ def company_logo(document):
 def generate(data, settings, number):
     private_template = Path(os.getenv('DATA_DIR','/data')) / 'invoice-template.docx'
     d = Document(private_template if private_template.exists() else BASE / 'templates/invoice.docx')
+    # Keep references before removing any optional paragraphs.
+    business_paragraphs = list(d.paragraphs[:6])
+    terms_paragraph = d.paragraphs[13]
     # Paragraph positions match both the original and sanitized template.
     for i,key in enumerate(('name','business','address','phone','email','website')):
         p=d.paragraphs[i]
@@ -123,7 +126,7 @@ def generate(data, settings, number):
         recipient += '\n' + address
     text(d.paragraphs[7], recipient)
     text(d.paragraphs[12], 'Date of invoice: ' + uk(data['date']))
-    text(d.paragraphs[13], 'Payment terms: ' + settings['terms'])
+    text(terms_paragraph, 'Payment terms: ' + settings['terms'] if settings['terms'].strip() else '')
     for i,key in ((4,'email'),(5,'website')):
         for link in d.paragraphs[i]._p.xpath('.//w:hyperlink'):
             rid=link.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
@@ -160,8 +163,32 @@ def generate(data, settings, number):
     cell(total_row.cells[-1], money(sum(x['fee'] for x in data['lines'])-data['deposit']))
     cell(d.tables[1].rows[0].cells[1], number)
     bank = d.tables[2]
-    for row, label, value in [(1,'Account Name',settings['account_name']), (2,'Account Number',settings['account_number']), (3,'Sort Code',settings['sort_code'])]:
-        cell(bank.rows[row].cells[0],label); cell(bank.rows[row].cells[1],value)
+    bank_rows = list(bank.rows)
+    bank_values = [settings['account_name'], settings['account_number'], settings['sort_code']]
+    for row, label, value in zip(bank_rows[1:], ['Account Name', 'Account Number', 'Sort Code'], bank_values):
+        if value.strip():
+            cell(row.cells[0], label); cell(row.cells[1], value)
+        else:
+            bank._tbl.remove(row._tr)
+    if not any(value.strip() for value in bank_values):
+        bank._tbl.getparent().remove(bank._tbl)
+    for paragraph, key in zip(business_paragraphs, ('name','business','address','phone','email','website')):
+        value = business if key == 'business' and business else settings[key]
+        if not value.strip():
+            if paragraph._p.xpath('.//w:drawing'):
+                # Retain the logo's anchor without reserving a blank text line.
+                paragraph.paragraph_format.space_before = Pt(0)
+                paragraph.paragraph_format.space_after = Pt(0)
+                paragraph.paragraph_format.line_spacing = Pt(1)
+            else:
+                paragraph._p.getparent().remove(paragraph._p)
+    # Keep the service table below floating logos as the text block shrinks.
+    for wrap in d.part.element.xpath('.//wp:anchor/wp:wrapNone'):
+        replacement = OxmlElement('wp:wrapSquare')
+        replacement.set('wrapText', 'bothSides')
+        wrap.getparent().replace(wrap, replacement)
+    if not settings['terms'].strip():
+        terms_paragraph._p.getparent().remove(terms_paragraph._p)
     with tempfile.TemporaryDirectory() as temp:
         root=Path(temp); source=root/'invoice.docx'; d.save(source)
         command = [os.getenv('SOFFICE','soffice'), f'-env:UserInstallation={ (root/"profile").as_uri() }', '--headless', '--convert-to', 'pdf', '--outdir', str(root), str(source)]

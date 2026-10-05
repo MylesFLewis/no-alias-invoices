@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.13 — 5 October 2026
+
+- Collapsed blank business detail lines and omitted blank payment terms in new PDFs.
+- Removed empty bank detail rows and hid the Payment Details table when all bank fields are blank.
+- Kept the service table clear of the logo as the header shrinks; existing saved PDFs remain unchanged.
+
 ## v0.12 — 5 October 2026
 
 - Displayed the selected contact address below Invoice to in new draft and saved PDFs when an address is present.
