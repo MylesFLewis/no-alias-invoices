@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.8 — 5 October 2026
+
+- Positioned the company logo at the upper left of the public invoice template, matching the original template placement and size.
+- Preserved the logo aspect ratio and kept business details and invoice tables in place.
+- Existing private-template logos retain their original placement.
+
 ## v0.7 — 5 October 2026
 
 - Increased the company logo file-size limit from 5 MB to 10 MB for local files and HTTP(S) URLs.
