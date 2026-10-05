@@ -1,0 +1,60 @@
+name: Build invoice image
+on:
+  push:
+    branches: [main]
+    paths: ['releases/**', 'scripts/**', '.github/workflows/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: invoice-image-main
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract latest release
+        id: release
+        run: python3 scripts/select_release.py
+      - name: Set image name
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Build
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          VERSION: ${{ steps.release.outputs.version }}
+          SOURCE: https://github.com/${{ github.repository }}
+        run: docker build --label "org.opencontainers.image.source=$SOURCE" --label "org.opencontainers.image.version=$VERSION" -t "$IMAGE:latest" -t "$IMAGE:v$VERSION" _build
+      - name: Test container startup and PDF generation
+        run: |
+          docker run -d --name invoice-smoke -p 18085:8080 -e DATA_DIR=/tmp/invoice-data '${{ steps.image.outputs.name }}:latest'
+          python3 scripts/smoke_test.py
+      - name: Log in to GitHub Container Registry
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+      - name: Publish
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          docker push "$IMAGE:v$VERSION"
+          docker push "$IMAGE:latest"
+      - name: Generate Unraid template
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+        run: python3 scripts/make_template.py "$IMAGE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unraid-template
+          path: unraid/my-no-alias-invoices.xml
+      - name: Container logs
+        if: failure()
+        run: docker logs invoice-smoke || true
+      - name: Clean up
+        if: always()
+        run: docker rm -f invoice-smoke || true
