@@ -121,9 +121,10 @@ def generate(data, settings, number):
             for n in nodes[1:]: n.text=''
         else: text(p,settings[key])
     recipient = 'Invoice to: ' + data['customer']
-    address = data.get('customer_address', '').strip()
-    if address:
-        recipient += '\n' + address
+    for key in ('customer_contact_name', 'customer_address', 'customer_email'):
+        value = data.get(key, '').strip()
+        if value:
+            recipient += '\n' + value
     text(d.paragraphs[7], recipient)
     text(d.paragraphs[12], 'Date of invoice: ' + uk(data['date']))
     text(terms_paragraph, 'Payment terms: ' + settings['terms'] if settings['terms'].strip() else '')

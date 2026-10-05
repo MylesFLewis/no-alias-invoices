@@ -15,6 +15,10 @@ with connection() as c:
     c.executescript('''CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL, next_number INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS contacts (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, address TEXT NOT NULL DEFAULT '', UNIQUE(kind,name));
 CREATE TABLE IF NOT EXISTS invoices (number INTEGER PRIMARY KEY, token TEXT UNIQUE NOT NULL, body TEXT NOT NULL, settings TEXT NOT NULL, pdf BLOB NOT NULL, created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);''')
+    columns = {row['name'] for row in c.execute('PRAGMA table_info(contacts)')}
+    for column in ('contact_name', 'email'):
+        if column not in columns:
+            c.execute(f"ALTER TABLE contacts ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
     c.execute('INSERT OR IGNORE INTO settings VALUES (1,?,1)',(json.dumps(DEFAULTS),))
 def clean(value,limit=2000):
     if not isinstance(value,str) or len(value)>limit: raise ValueError('Invalid or overlong text field.')
@@ -29,7 +33,7 @@ def valid_date(v):
     date.fromisoformat(v); return v
 
 def invoice(raw):
-    result={'customer':clean(raw.get('customer','')),'customer_address':clean(raw.get('customer_address',''),500),'date':valid_date(raw.get('date','')),'deposit':pence(raw.get('deposit',0)), 'lines':[]}
+    result={'customer':clean(raw.get('customer','')),'customer_address':clean(raw.get('customer_address',''),500),'customer_contact_name':clean(raw.get('customer_contact_name',''),200),'customer_email':clean(raw.get('customer_email',''),254),'date':valid_date(raw.get('date','')),'deposit':pence(raw.get('deposit',0)), 'lines':[]}
     if not result['customer']: raise ValueError('Choose or enter an invoice recipient.')
     lines=raw.get('lines',[])
     if not isinstance(lines,list) or not lines: raise ValueError('Add at least one service row.')
@@ -91,7 +95,10 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/contacts':
                     kind=raw.get('kind');name=clean(raw.get('name',''),200);address=clean(raw.get('address',''),500)
                     if kind not in ('customer','venue') or not name:raise ValueError('Enter a name.')
-                    c.execute('INSERT INTO contacts(kind,name,address) VALUES (?,?,?) ON CONFLICT(kind,name) DO UPDATE SET address=excluded.address',(kind,name,address))
+                    contact_name=clean(raw.get('contact_name',''),200) if kind=='customer' else ''
+                    email=clean(raw.get('email',''),254) if kind=='customer' else ''
+                    if email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',email):raise ValueError('Enter a valid email address.')
+                    c.execute('INSERT INTO contacts(kind,name,address,contact_name,email) VALUES (?,?,?,?,?) ON CONFLICT(kind,name) DO UPDATE SET address=excluded.address, contact_name=excluded.contact_name, email=excluded.email',(kind,name,address,contact_name,email))
                     return self.reply(200,{'ok':True})
                 if path=='/api/settings':
                     settings={k:clean(raw.get(k,'')) for k in DEFAULTS}

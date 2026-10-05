@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14 — 5 October 2026
+
+- Added optional Contact Name and Email address fields to Contacts and labelled the existing name Company Name.
+- Showed company, person, address and email in the PDF recipient block, omitting blank optional fields.
+- Preserved existing contacts with an automatic database update and saved the extra details with new invoices.
+
 ## v0.13 — 5 October 2026
 
 - Collapsed blank business detail lines and omitted blank payment terms in new PDFs.
