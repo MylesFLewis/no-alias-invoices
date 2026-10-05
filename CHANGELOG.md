@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15 — 5 October 2026
+
+- Added optional per-contact invoice numbering with a prefix and editable next number.
+- Kept the main counter for contacts with separate numbering disabled; previews never consume numbers.
+- Displayed the selected contact next number and supported prefixed numbers in PDFs, downloads and History.
+- Preserved existing invoices and added safe duplicate checks, atomic numbering and counter-specific test invoice resets.
+
 ## v0.14 — 5 October 2026
 
 - Added optional Contact Name and Email address fields to Contacts and labelled the existing name Company Name.

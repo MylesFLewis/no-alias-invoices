@@ -19,6 +19,15 @@ CREATE TABLE IF NOT EXISTS invoices (number INTEGER PRIMARY KEY, token TEXT UNIQ
     for column in ('contact_name', 'email'):
         if column not in columns:
             c.execute(f"ALTER TABLE contacts ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+    for column, declaration in [('separate_numbering','INTEGER NOT NULL DEFAULT 0'),('invoice_prefix',"TEXT NOT NULL DEFAULT ''"),('next_invoice_number','INTEGER NOT NULL DEFAULT 1')]:
+        if column not in columns:
+            c.execute(f'ALTER TABLE contacts ADD COLUMN {column} {declaration}')
+    invoice_columns = {row['name'] for row in c.execute('PRAGMA table_info(invoices)')}
+    for column, declaration in [('display_number','TEXT'),('sequence_number','INTEGER'),('contact_id','INTEGER'),('number_prefix',"TEXT NOT NULL DEFAULT ''")]:
+        if column not in invoice_columns:
+            c.execute(f'ALTER TABLE invoices ADD COLUMN {column} {declaration}')
+    c.execute("UPDATE invoices SET display_number=printf('%04d',number),sequence_number=number WHERE display_number IS NULL")
+    c.execute('CREATE UNIQUE INDEX IF NOT EXISTS invoice_display_number ON invoices(display_number)')
     c.execute('INSERT OR IGNORE INTO settings VALUES (1,?,1)',(json.dumps(DEFAULTS),))
 def clean(value,limit=2000):
     if not isinstance(value,str) or len(value)>limit: raise ValueError('Invalid or overlong text field.')
@@ -58,11 +67,11 @@ class Handler(BaseHTTPRequestHandler):
         with connection() as c:
             if path=='/api/state':
                 s=c.execute('SELECT * FROM settings').fetchone()
-                return self.reply(200,{'branding':{'business_name':os.getenv('BUSINESS_NAME','').strip()},'settings':json.loads(s['body']),'next':f"{s['next_number']:04d}",'contacts':[dict(r) for r in c.execute('SELECT * FROM contacts ORDER BY name')], 'invoices':[dict(number=f"{r['number']:04d}", **json.loads(r['body']),created=r['created']) for r in c.execute('SELECT number,body,created FROM invoices ORDER BY number DESC')]})
+                return self.reply(200,{'branding':{'business_name':os.getenv('BUSINESS_NAME','').strip()},'settings':json.loads(s['body']),'next':f"{s['next_number']:04d}",'contacts':[dict(r) for r in c.execute('SELECT * FROM contacts ORDER BY name')], 'invoices':[dict(**json.loads(r['body']),id=r['number'],number=r['display_number'],created=r['created']) for r in c.execute('SELECT number,display_number,body,created FROM invoices ORDER BY number DESC')]})
             m=re.fullmatch(r'/api/invoices/(\d+)/pdf',path)
             if m:
-                r=c.execute('SELECT pdf FROM invoices WHERE number=?',(int(m[1]),)).fetchone()
-                if r:return self.reply(200,r['pdf'],'application/pdf',f'No-Alias-Invoice-{int(m[1]):04d}.pdf')
+                r=c.execute('SELECT pdf,display_number FROM invoices WHERE number=?',(int(m[1]),)).fetchone()
+                if r:return self.reply(200,r['pdf'],'application/pdf',f"Invoice-{r['display_number']}.pdf")
             if path=='/api/backup':
                 import tempfile
                 with tempfile.TemporaryDirectory() as t:
@@ -81,30 +90,54 @@ class Handler(BaseHTTPRequestHandler):
             raw=json.loads(self.rfile.read(size));path=urlparse(self.path).path
             with connection() as c:
                 if path=='/api/invoices/remove-latest-test':
-                    number=int(raw.get('number',0))
-                    if raw.get('confirm') != f'{number:04d}':
-                        raise ValueError('Enter the invoice number to confirm removal.')
+                    identifier=int(raw.get('id',raw.get('number',0)))
                     c.execute('BEGIN IMMEDIATE')
-                    latest=c.execute('SELECT MAX(number) FROM invoices').fetchone()[0]
-                    if latest is None or number != latest:
+                    latest=c.execute('SELECT * FROM invoices ORDER BY number DESC LIMIT 1').fetchone()
+                    if latest is None or identifier != latest['number']:
                         raise ValueError('Only the latest saved invoice can be removed. Refresh History.')
-                    c.execute('DELETE FROM invoices WHERE number=?',(number,))
-                    c.execute('UPDATE settings SET next_number=? WHERE id=1',(number,))
+                    if raw.get('confirm') != latest['display_number']:
+                        raise ValueError('Enter the invoice number to confirm removal.')
+                    sequence=latest['sequence_number']
+                    if latest['contact_id'] is None:
+                        current=c.execute('SELECT next_number FROM settings WHERE id=1').fetchone()[0]
+                        if current!=sequence+1:raise ValueError('The counter has changed since this invoice. It cannot be reset automatically.')
+                        c.execute('UPDATE settings SET next_number=? WHERE id=1',(sequence,))
+                    else:
+                        contact=c.execute('SELECT * FROM contacts WHERE id=?',(latest['contact_id'],)).fetchone()
+                        if not contact or contact['invoice_prefix']!=latest['number_prefix'] or contact['next_invoice_number']!=sequence+1:
+                            raise ValueError('The contact counter has changed since this invoice. It cannot be reset automatically.')
+                        c.execute('UPDATE contacts SET next_invoice_number=? WHERE id=?',(sequence,latest['contact_id']))
+                    c.execute('DELETE FROM invoices WHERE number=?',(identifier,))
                     c.commit()
-                    return self.reply(200,{'next':f'{number:04d}'})
+                    return self.reply(200,{'next':latest['display_number']})
                 if path=='/api/contacts':
                     kind=raw.get('kind');name=clean(raw.get('name',''),200);address=clean(raw.get('address',''),500)
                     if kind not in ('customer','venue') or not name:raise ValueError('Enter a name.')
                     contact_name=clean(raw.get('contact_name',''),200) if kind=='customer' else ''
                     email=clean(raw.get('email',''),254) if kind=='customer' else ''
                     if email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',email):raise ValueError('Enter a valid email address.')
-                    c.execute('INSERT INTO contacts(kind,name,address,contact_name,email) VALUES (?,?,?,?,?) ON CONFLICT(kind,name) DO UPDATE SET address=excluded.address, contact_name=excluded.contact_name, email=excluded.email',(kind,name,address,contact_name,email))
+                    c.execute('BEGIN IMMEDIATE')
+                    existing=c.execute('SELECT * FROM contacts WHERE kind=? AND name=?',(kind,name)).fetchone()
+                    enabled=bool(raw.get('separate_numbering',False)) if kind=='customer' else False
+                    prefix=clean(raw.get('invoice_prefix',existing['invoice_prefix'] if existing else ''),30) if kind=='customer' else ''
+                    next_number=int(raw.get('next_invoice_number',existing['next_invoice_number'] if existing else 1))
+                    if prefix and not re.fullmatch(r'[A-Za-z0-9_-]+',prefix):raise ValueError('Use only letters, numbers, hyphens or underscores in the prefix.')
+                    if enabled and (not prefix or not re.search(r'[A-Za-z_-]',prefix)):raise ValueError('Enter a prefix containing a letter, hyphen or underscore.')
+                    if next_number<1 or next_number>99999999:raise ValueError('Enter a next invoice number between 1 and 99999999.')
+                    contact_id=existing['id'] if existing else -1
+                    if enabled:
+                        conflict=c.execute('SELECT id FROM contacts WHERE id!=? AND separate_numbering=1 AND invoice_prefix=?',(contact_id,prefix)).fetchone()
+                        used=c.execute('SELECT number FROM invoices WHERE number_prefix=? AND (contact_id IS NULL OR contact_id!=?)',(prefix,contact_id)).fetchone()
+                        if conflict or used:raise ValueError('This prefix is already used by another contact. Choose a different prefix.')
+                        last=c.execute('SELECT COALESCE(MAX(sequence_number),0) FROM invoices WHERE contact_id=? AND number_prefix=?',(contact_id,prefix)).fetchone()[0]
+                        if next_number<=last:raise ValueError('Next number must be higher than saved invoices for this contact and prefix.')
+                    c.execute('INSERT INTO contacts(kind,name,address,contact_name,email,separate_numbering,invoice_prefix,next_invoice_number) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(kind,name) DO UPDATE SET address=excluded.address, contact_name=excluded.contact_name, email=excluded.email, separate_numbering=excluded.separate_numbering, invoice_prefix=excluded.invoice_prefix,next_invoice_number=excluded.next_invoice_number',(kind,name,address,contact_name,email,int(enabled),prefix,next_number))
                     return self.reply(200,{'ok':True})
                 if path=='/api/settings':
                     settings={k:clean(raw.get(k,'')) for k in DEFAULTS}
                     number=int(raw.get('next_number'))
                     c.execute('BEGIN IMMEDIATE')
-                    last=c.execute('SELECT COALESCE(MAX(number),0) FROM invoices').fetchone()[0]
+                    last=c.execute('SELECT COALESCE(MAX(sequence_number),0) FROM invoices WHERE contact_id IS NULL').fetchone()[0]
                     if number<=last or number<1 or number>99999999:raise ValueError('Next number must be higher than all saved invoices.')
                     c.execute('UPDATE settings SET body=?,next_number=? WHERE id=1',(json.dumps(settings),number))
                     return self.reply(200,{'ok':True})
@@ -116,14 +149,25 @@ class Handler(BaseHTTPRequestHandler):
                     token=clean(raw.get('token',''),100)
                     if not token:raise ValueError('Missing save token')
                     c.execute('BEGIN IMMEDIATE')
-                    old=c.execute('SELECT number FROM invoices WHERE token=?',(token,)).fetchone()
-                    if old:return self.reply(200,{'number':f"{old[0]:04d}"})
-                    s=c.execute('SELECT * FROM settings').fetchone();n=s['next_number']
-                    pdf=generate(data,json.loads(s['body']),f'{n:04d}')
-                    c.execute('INSERT INTO invoices(number,token,body,settings,pdf) VALUES (?,?,?,?,?)',(n,token,json.dumps(data),s['body'],pdf))
-                    c.execute('UPDATE settings SET next_number=? WHERE id=1',(n+1,))
+                    old=c.execute('SELECT number,display_number FROM invoices WHERE token=?',(token,)).fetchone()
+                    if old:return self.reply(200,{'id':old['number'],'number':old['display_number']})
+                    s=c.execute('SELECT * FROM settings').fetchone()
+                    contact=c.execute("SELECT * FROM contacts WHERE kind='customer' AND name=?",(data['customer'],)).fetchone()
+                    separate=contact is not None and bool(contact['separate_numbering'])
+                    n=contact['next_invoice_number'] if separate else s['next_number']
+                    prefix=contact['invoice_prefix'] if separate else ''
+                    display=f'{prefix}{n:04d}'
+                    if c.execute('SELECT 1 FROM invoices WHERE display_number=?',(display,)).fetchone():
+                        raise ValueError('This invoice number already exists. Change the prefix or next number.')
+                    identifier=c.execute('SELECT COALESCE(MAX(number),0)+1 FROM invoices').fetchone()[0]
+                    pdf=generate(data,json.loads(s['body']),display)
+                    c.execute('INSERT INTO invoices(number,token,body,settings,pdf,display_number,sequence_number,contact_id,number_prefix) VALUES (?,?,?,?,?,?,?,?,?)',(identifier,token,json.dumps(data),s['body'],pdf,display,n,contact['id'] if separate else None,prefix))
+                    if separate:
+                        c.execute('UPDATE contacts SET next_invoice_number=? WHERE id=?',(n+1,contact['id']))
+                    else:
+                        c.execute('UPDATE settings SET next_number=? WHERE id=1',(n+1,))
                     c.commit()
-                    return self.reply(201,{'number':f'{n:04d}'})
+                    return self.reply(201,{'id':identifier,'number':display})
             self.reply(404,{'error':'Not found'})
         except (ValueError,TypeError,KeyError) as e:self.reply(400,{'error':str(e)})
         except Exception:

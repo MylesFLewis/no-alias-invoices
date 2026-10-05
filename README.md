@@ -63,3 +63,11 @@ For an existing installation, update the container image to v0.6, then **Edit â†
 ## Saved contacts and venues (v0.11)
 
 Use **Contacts** to save and edit Invoice to recipients and their addresses. Use **Venues** to save and edit venues and their addresses. The New invoice dropdowns use these saved entries. Existing saved details appear in their respective tabs automatically after updating.
+
+## Per-contact invoice numbering (v0.15)
+
+In **Contacts**, enable **Use separate invoice numbering for this contact**, enter a prefix and the next invoice number, then save the contact. For example, `LEA` and `169` produce `LEA0169`; use `LEA-` for `LEA-0169`. The number is padded to at least four digits. Each enabled contact needs its own prefix.
+
+The New invoice screen shows the next number for the selected contact. Saving advances only that contact's counter. Previews do not use a number. Leave the checkbox unticked to use the main number in Settings. Disabling separate numbering retains the contact's prefix and counter for later use. Existing invoices and PDFs retain their original numbers.
+
+The latest test invoice can still be removed from History, resetting the counter used by that invoice. If its counter or prefix has since been changed manually, automatic removal/reset is blocked to avoid overwriting those changes.
