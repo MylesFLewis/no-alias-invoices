@@ -13,4 +13,7 @@ assert all(not state['settings'][k] for k in ('name','address','phone','email','
 data=dict(customer='Sample Customer',date='2026-01-01',deposit='0',lines=[dict(date='2026-01-01',venue='Sample Venue',service='Sample Service',fee='100')])
 req=urllib.request.Request(URL+'/api/preview',data=json.dumps(data).encode(),headers={'Content-Type':'application/json'})
 with urllib.request.urlopen(req,timeout=120) as r:assert r.read().startswith(b'%PDF')
-print('Startup, blank defaults and PDF generation passed')
+data['lines'] = [dict(date='2026-01-01',venue='Sample Venue',service=f'Sample Service {i+1}',fee='100') for i in range(7)]
+req=urllib.request.Request(URL+'/api/preview',data=json.dumps(data).encode(),headers={'Content-Type':'application/json'})
+with urllib.request.urlopen(req,timeout=120) as r:assert r.read().startswith(b'%PDF')
+print('Startup, blank defaults and one/seven-service PDF generation passed')
