@@ -111,3 +111,5 @@ Matching venue names update existing entries rather than creating duplicates. Im
 Each invoice service has an optional **Other details** text field (up to 1,000 characters), shown in its own PDF column before Fee. Long text wraps within fixed columns; rows grow or continue onto another page with repeated headers.
 
 Contacts and venues can be deleted using their **Delete** button. Both confirmation prompts must be accepted. Saved invoices and PDFs are retained. Deleting a contact releases its assigned venues so all contacts can select them.
+
+In **Venues**, select **Edit**, choose an **Assigned contact**, and save. You can move a venue to a different contact or choose **Available to all contacts** to release it. Assigning a venue automatically enables the contact’s assigned-venues option.

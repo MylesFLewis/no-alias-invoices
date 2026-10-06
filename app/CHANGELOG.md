@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.25 — 6 October 2026
+
+- Added an Assigned contact dropdown to the venue form, populated with existing contacts.
+- Allowed assigning, moving or releasing venues directly from Venues; Available to all contacts makes a venue shared.
+- Automatically enabled Contact has assigned venues when assigning a venue, and refreshed invoice dropdowns after saving.
+
 ## v0.24 — 6 October 2026
 
 - Added Delete buttons for saved contacts and venues, requiring two confirmation prompts.

@@ -284,6 +284,13 @@ class Handler(BaseHTTPRequestHandler):
                         last=c.execute('SELECT COALESCE(MAX(sequence_number),0) FROM invoices WHERE contact_id=? AND number_prefix=?',(contact_id,prefix)).fetchone()[0]
                         if next_number<=last:raise ValueError('Next number must be higher than saved invoices for this contact and prefix.')
                     c.execute('INSERT INTO contacts(id,kind,name,address,contact_name,email,separate_numbering,invoice_prefix,next_invoice_number) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,name) DO UPDATE SET address=excluded.address, contact_name=excluded.contact_name, email=excluded.email, separate_numbering=excluded.separate_numbering, invoice_prefix=excluded.invoice_prefix,next_invoice_number=excluded.next_invoice_number',(existing['id'] if existing else next_contact_id(c),kind,name,address,contact_name,email,int(enabled),prefix,next_number))
+                    if kind=='venue' and 'assigned_contact_id' in raw:
+                        owner=raw['assigned_contact_id']
+                        if owner is not None:
+                            if type(owner) is not int or not c.execute("SELECT id FROM contacts WHERE kind='customer' AND id=?",(owner,)).fetchone():
+                                raise ValueError('Choose a valid saved contact, or Available to all contacts.')
+                            c.execute('UPDATE contacts SET has_assigned_venues=1 WHERE id=?',(owner,))
+                        c.execute("UPDATE contacts SET assigned_contact_id=? WHERE kind='venue' AND name=?",(owner,name))
                     if kind=='customer' and 'payment_term_days' in raw:
                         days=raw['payment_term_days']
                         if days in (None,''):days=None
