@@ -13,6 +13,7 @@ def connection():
     c=sqlite3.connect(DB,timeout=120);c.row_factory=sqlite3.Row;return c
 with connection() as c:
     c.executescript('''CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL, next_number INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS retired_contact_ids (id INTEGER PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS contacts (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, address TEXT NOT NULL DEFAULT '', UNIQUE(kind,name));
 CREATE TABLE IF NOT EXISTS invoices (number INTEGER PRIMARY KEY, token TEXT UNIQUE NOT NULL, body TEXT NOT NULL, settings TEXT NOT NULL, pdf BLOB NOT NULL, created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);''')
     columns = {row['name'] for row in c.execute('PRAGMA table_info(contacts)')}
@@ -40,6 +41,9 @@ def pence(v):
     except InvalidOperation: raise ValueError('Invalid amount.')
 def valid_date(v):
     date.fromisoformat(v); return v
+
+def next_contact_id(c):
+    return c.execute('SELECT COALESCE(MAX(id),0)+1 FROM (SELECT id FROM contacts UNION ALL SELECT id FROM retired_contact_ids)').fetchone()[0]
 
 def invoice(raw):
     result={'customer':clean(raw.get('customer','')),'customer_address':clean(raw.get('customer_address',''),500),'customer_contact_name':clean(raw.get('customer_contact_name',''),200),'customer_email':clean(raw.get('customer_email',''),254),'date':valid_date(raw.get('date','')),'deposit':pence(raw.get('deposit',0)), 'lines':[]}
@@ -215,7 +219,7 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError('The CSV or saved details changed after the preview. Preview again before importing.')
                     for row in plan['rows']:
                         if row['venue_id'] is None:
-                            c.execute("INSERT INTO contacts(kind,name,address,assigned_contact_id) VALUES('venue',?,?,?)",(row['name'],row['address'],row['contact_id']))
+                            c.execute("INSERT INTO contacts(id,kind,name,address,assigned_contact_id) VALUES(?,'venue',?,?,?)",(next_contact_id(c),row['name'],row['address'],row['contact_id']))
                         else:
                             c.execute('UPDATE contacts SET address=?,assigned_contact_id=? WHERE id=?',(row['address'],row['contact_id'],row['venue_id']))
                         if row['contact_id'] is not None:
@@ -246,6 +250,18 @@ class Handler(BaseHTTPRequestHandler):
                     warning=remove_export(latest['display_number'],latest['pdf'])
                     if warning:result['warning']=warning
                     return self.reply(200,result)
+                if path=='/api/contacts/delete':
+                    c.execute('BEGIN IMMEDIATE')
+                    entry=c.execute('SELECT * FROM contacts WHERE id=?',(int(raw.get('id',0)),)).fetchone()
+                    if not entry:raise ValueError('This contact or venue no longer exists.')
+                    if raw.get('confirm_name')!=entry['name'] or raw.get('confirmed') is not True:
+                        raise ValueError('Both deletion confirmations are required.')
+                    if entry['kind']=='customer':
+                        c.execute("UPDATE contacts SET assigned_contact_id=NULL WHERE kind='venue' AND assigned_contact_id=?",(entry['id'],))
+                    c.execute('INSERT OR IGNORE INTO retired_contact_ids(id) VALUES(?)',(entry['id'],))
+                    c.execute('DELETE FROM contacts WHERE id=?',(entry['id'],))
+                    c.commit()
+                    return self.reply(200,{'deleted':entry['id']})
                 if path=='/api/contacts':
                     kind=raw.get('kind');name=clean(raw.get('name',''),200);address=clean(raw.get('address',''),500)
                     if kind not in ('customer','venue') or not name:raise ValueError('Enter a name.')
@@ -267,7 +283,7 @@ class Handler(BaseHTTPRequestHandler):
                         if conflict or used:raise ValueError('This prefix is already used by another contact. Choose a different prefix.')
                         last=c.execute('SELECT COALESCE(MAX(sequence_number),0) FROM invoices WHERE contact_id=? AND number_prefix=?',(contact_id,prefix)).fetchone()[0]
                         if next_number<=last:raise ValueError('Next number must be higher than saved invoices for this contact and prefix.')
-                    c.execute('INSERT INTO contacts(kind,name,address,contact_name,email,separate_numbering,invoice_prefix,next_invoice_number) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(kind,name) DO UPDATE SET address=excluded.address, contact_name=excluded.contact_name, email=excluded.email, separate_numbering=excluded.separate_numbering, invoice_prefix=excluded.invoice_prefix,next_invoice_number=excluded.next_invoice_number',(kind,name,address,contact_name,email,int(enabled),prefix,next_number))
+                    c.execute('INSERT INTO contacts(id,kind,name,address,contact_name,email,separate_numbering,invoice_prefix,next_invoice_number) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,name) DO UPDATE SET address=excluded.address, contact_name=excluded.contact_name, email=excluded.email, separate_numbering=excluded.separate_numbering, invoice_prefix=excluded.invoice_prefix,next_invoice_number=excluded.next_invoice_number',(existing['id'] if existing else next_contact_id(c),kind,name,address,contact_name,email,int(enabled),prefix,next_number))
                     if kind=='customer' and 'payment_term_days' in raw:
                         days=raw['payment_term_days']
                         if days in (None,''):days=None

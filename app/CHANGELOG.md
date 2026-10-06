@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.24 — 6 October 2026
+
+- Added Delete buttons for saved contacts and venues, requiring two confirmation prompts.
+- Deleting a contact releases its assigned venues for all contacts; deleting a venue removes it from future selections.
+- Preserved saved invoice details, PDFs and numbering references when deleting saved details.
+
 ## v0.23 — 5 October 2026
 
 - Added an optional Other details field to each invoice service and a PDF column before Fee.

@@ -109,3 +109,5 @@ The headings are `Venue name,Address,Company name`. Company name must match an e
 Matching venue names update existing entries rather than creating duplicates. Importing an assigned venue enables **Contact has assigned venues** for that contact. A venue already assigned to another contact must be released before importing a different assignment. All row errors must be fixed before the batch can be imported.
 
 Each invoice service has an optional **Other details** text field (up to 1,000 characters), shown in its own PDF column before Fee. Long text wraps within fixed columns; rows grow or continue onto another page with repeated headers.
+
+Contacts and venues can be deleted using their **Delete** button. Both confirmation prompts must be accepted. Saved invoices and PDFs are retained. Deleting a contact releases its assigned venues so all contacts can select them.
