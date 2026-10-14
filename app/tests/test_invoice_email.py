@@ -190,7 +190,7 @@ class InvoiceEmailTests(unittest.TestCase):
         self.assertEqual(self.job(saved['id'])['status'],'sent');self.assertFalse(mail.LOCK.locked())
         self.request('/health');self.kick.return_value=None
 
-    def test_delete_pending_cancels_mail_and_issued_number_cannot_be_reused(self):
+    def test_delete_pending_and_sent_reclaims_number_but_sending_is_blocked(self):
         saved=self.post('/api/invoices',self.raw())
         self.post('/api/invoices/remove-latest-test',dict(id=saved['id'],confirm=saved['number']))
         self.assertIsNone(mail.claim(app.connection,time.time()));self.assertEqual(self.state()['next'],'0001')
@@ -198,8 +198,9 @@ class InvoiceEmailTests(unittest.TestCase):
         job=mail.claim(app.connection,time.time())
         self.assertEqual(self.request('/api/invoices/remove-latest-test',dict(id=saved['id'],confirm=saved['number']))[0],400)
         mail.finish(app.connection,job)
-        self.assertEqual(self.request('/api/invoices/remove-latest-test',dict(id=saved['id'],confirm=saved['number']))[0],400)
-        self.assertEqual(self.state()['next'],'0002')
+        removed=self.post('/api/invoices/remove-latest-test',dict(id=saved['id'],confirm=saved['number']))
+        self.assertEqual(removed['next'],'0001');self.assertEqual(self.state()['next'],'0001');self.assertFalse(self.state()['invoices'])
+        with app.connection() as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM invoice_mail').fetchone()[0],0)
 
     def test_migration_preserves_old_records_settings_and_pdf(self):
         saved=self.post('/api/invoices',self.raw(email=False))
