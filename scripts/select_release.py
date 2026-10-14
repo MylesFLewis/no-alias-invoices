@@ -33,10 +33,10 @@ def extract(root):
         source_version=(source/'VERSION').read_text().strip()
         if not re.fullmatch(r'\d+(?:\.\d+){1,2}',source_version):raise ValueError('Invalid source VERSION')
         if tuple(map(int,source_version.split('.')))>=tuple(map(int,version.split('.'))):
-for name in ['.dockerignore','CHANGELOG.md','Dockerfile','VERSION','app.py','documents.py',
-             'invoice_mail.py','microsoft_graph.py','connect_microsoft.py','bootstrap.py',
-             'requirements.txt','static/app.js','static/index.html','static/style.css',
-             'tests/test_invoice_email.py']:
+            for name in ['.dockerignore','CHANGELOG.md','Dockerfile','VERSION','app.py','documents.py',
+                         'invoice_mail.py','microsoft_graph.py','connect_microsoft.py','bootstrap.py',
+                         'requirements.txt','static/app.js','static/index.html','static/style.css',
+                         'tests/test_invoice_email.py']:
                 path=source/name
                 if path.is_file():
                     dest=target/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(path,dest)
