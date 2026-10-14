@@ -1,6 +1,0 @@
-## v0.29
-
-- Latest test invoices can now be removed after a successful email send.
-- Emailed test invoices show a stronger warning that deleting the invoice cannot recall the email already sent.
-- Removing the latest emailed test invoice deletes its email-status record and saved PDF copy and rolls its invoice counter back so the test number can be reused.
-- Invoices that are currently sending or have uncertain delivery remain protected from deletion and number reuse.
