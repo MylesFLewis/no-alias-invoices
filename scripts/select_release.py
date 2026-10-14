@@ -26,6 +26,20 @@ def extract(root):
     if (target/'VERSION').read_text().strip()!=version:raise ValueError('Filename and VERSION disagree')
     for required in ('app.py','documents.py','Dockerfile','templates/invoice.docx','static/index.html'):
         if not (target/required).is_file():raise ValueError('Missing '+required)
+    # Current releases use reviewed text source; retain the existing public
+    # archive's sanitized Word template without publishing a new document.
+    source=root/'app'
+    if (source/'VERSION').is_file():
+        source_version=(source/'VERSION').read_text().strip()
+        if not re.fullmatch(r'\d+(?:\.\d+){1,2}',source_version):raise ValueError('Invalid source VERSION')
+        if tuple(map(int,source_version.split('.')))>=tuple(map(int,version.split('.'))):
+            for name in ['.dockerignore','CHANGELOG.md','Dockerfile','VERSION','app.py','documents.py',
+                         'invoice_mail.py','requirements.txt','static/app.js','static/index.html','static/style.css',
+                         'tests/test_invoice_email.py']:
+                path=source/name
+                if path.is_file():
+                    dest=target/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(path,dest)
+            version=source_version
     (target/'VERSION').write_text(version+'\n')
     return version
 if __name__=='__main__':
@@ -33,3 +47,4 @@ if __name__=='__main__':
     print('Selected v'+version)
     if os.getenv('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write('version='+version+'\n')
+

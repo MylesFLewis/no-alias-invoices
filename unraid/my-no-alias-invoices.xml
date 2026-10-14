@@ -22,7 +22,10 @@ To keep your logo elsewhere, choose Add another Path, Port, Variable, Label or D
 COMPANY LOGO - URL
 Alternatively, enter a direct HTTP(S) URL to a PNG or JPEG accessible from the container. Logos must be at most 10 MB and 20 million pixels. Leave Company logo blank to preserve the logo already in your private Word template.
 
-Click Apply, open the WebUI and generate a draft PDF to check the result. These settings affect new PDFs; saved invoices are unchanged. Docker Icon URL is separate and controls only the icon in Unraid's Docker list.</Overview>
+Click Apply, open the WebUI and generate a draft PDF to check the result. These settings affect new PDFs; saved invoices are unchanged. Docker Icon URL is separate and controls only the icon in Unraid's Docker list.
+
+INVOICE EMAIL
+Configure the optional SMTP variables to send final PDF invoices to saved contact email addresses. TLS is required: starttls (usually 587) or ssl (usually 465). Leave passwords blank in shared templates. On New invoice select Email invoice to contact; check History for delivery status. The app remains local-only with no login: keep it on your trusted LAN or VPN.</Overview>
   <Category>Productivity:</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <Support />
@@ -34,4 +37,10 @@ Click Apply, open the WebUI and generate a draft PDF to check the result. These 
   <Icon>https://raw.githubusercontent.com/MylesFLewis/no-alias-invoices/main/assets/logo.png</Icon>
   <Config Name="Business name" Target="BUSINESS_NAME" Default="" Mode="" Description="Business name shown at the top of the web UI and on new invoices. Blank uses existing app settings." Type="Variable" Display="always" Required="false" Mask="false" />
   <Config Name="Company logo" Target="COMPANY_LOGO" Default="" Mode="" Description="PNG/JPEG HTTP(S) URL or container path, e.g. /data/logo.png. Blank preserves the Word template logo." Type="Variable" Display="always" Required="false" Mask="false" />
+  <Config Name="SMTP host" Target="SMTP_HOST" Default="" Mode="" Description="Mail server hostname. Blank disables invoice email." Type="Variable" Display="always" Required="false" Mask="false" />
+  <Config Name="SMTP port" Target="SMTP_PORT" Default="587" Mode="" Description="Mail server port, normally 587 for STARTTLS or 465 for SSL." Type="Variable" Display="always" Required="false" Mask="false">587</Config>
+  <Config Name="SMTP security" Target="SMTP_SECURITY" Default="starttls" Mode="" Description="starttls or ssl. Unencrypted SMTP is not supported." Type="Variable" Display="always" Required="false" Mask="false">starttls</Config>
+  <Config Name="SMTP username" Target="SMTP_USERNAME" Default="" Mode="" Description="Mail account username. Use an app password where required." Type="Variable" Display="always" Required="false" Mask="false" />
+  <Config Name="SMTP password" Target="SMTP_PASSWORD" Default="" Mode="" Description="Mail account/app password. Keep private." Type="Variable" Display="always" Required="false" Mask="true" />
+  <Config Name="SMTP sender" Target="SMTP_FROM" Default="" Mode="" Description="Single sender email address permitted by your mail provider." Type="Variable" Display="always" Required="false" Mask="false" />
 </Container>

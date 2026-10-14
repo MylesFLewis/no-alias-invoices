@@ -6,7 +6,7 @@ Build versioned Docker images for a local invoice app and update them through Un
 
 This public repository is ready to use. The v0.4 image has passed startup and PDF generation tests. Do not upload earlier private release ZIPs.
 
-The workflow extracts the highest numeric release in `releases`, builds it, checks startup and PDF conversion, then publishes `ghcr.io/mylesflewis/no-alias-invoices:latest` and a version tag. The release ZIP contains the complete sanitized app source and is the build input.
+The workflow extracts the highest numeric archive in `releases` for its sanitized bundled template, overlays the current reviewed `app/` source when its version is at least as recent, builds it, checks startup and PDF conversion, then publishes `ghcr.io/mylesflewis/no-alias-invoices:latest` and a version tag. Older versions use their release ZIP as the build input; v0.26 onward uses the reviewed text source plus the existing public template.
 
 The container image is public and can be pulled without authentication. No Docker Hub account or personal access token is needed for the build.
 
@@ -36,7 +36,7 @@ The bundled XML in `unraid/my-no-alias-invoices.xml` is already configured for t
 
 ## Later updates
 
-Upload a sanitized `no-alias-invoices-v0.5.zip` (or later) into the repository's `releases` folder using **Add file → Upload files**, and commit it to `main`. Each ZIP contains a top-level `no-alias-invoices` folder and a VERSION file matching its filename. Keep only public-safe source in release ZIPs; do not include a database or private template.
+For legacy archive releases, upload a sanitized `no-alias-invoices-v0.5.zip` (or later) into the repository's `releases` folder using **Add file → Upload files**, and commit it to `main`. Each ZIP contains a top-level `no-alias-invoices` folder and a VERSION file matching its filename. Keep only public-safe source in release ZIPs; do not include a database or private template.
 
 Wait for **Build invoice image** in Actions to succeed. Then in Unraid's Docker tab select **Check for Updates**, and update this container. Always use `:latest` for this flow. A specific `:v0.4` tag stays on that version.
 
@@ -113,3 +113,29 @@ Each invoice service has an optional **Other details** text field (up to 1,000 c
 Contacts and venues can be deleted using their **Delete** button. Both confirmation prompts must be accepted. Saved invoices and PDFs are retained. Deleting a contact releases its assigned venues so all contacts can select them.
 
 In **Venues**, select **Edit**, choose an **Assigned contact**, and save. You can move a venue to a different contact or choose **Available to all contacts** to release it. Assigning a venue automatically enables the contact’s assigned-venues option.
+
+
+## Email invoices to saved contacts (v0.26)
+
+Add an email address in **Contacts**. In **New invoice**, choose that contact and tick **Email invoice to contact**. The displayed address is the recipient. Saving still stores the PDF in History, copies it to the invoice folder and downloads it; it also queues that same final PDF as an attachment. Previews never send mail. The checkbox starts unticked and clears after saving or changing contact. It is disabled if SMTP is not configured or the selected contact has no email.
+
+For an existing Unraid container, add these **Variable** entries under Edit → Add another Path, Port, Variable, Label or Device, then Apply. Keep your existing appdata and invoice-output mappings. New templates include the fields.
+
+| Variable | Value |
+|---|---|
+| `SMTP_HOST` | Your provider's SMTP hostname |
+| `SMTP_PORT` | Usually `587` for STARTTLS or `465` for SSL |
+| `SMTP_SECURITY` | `starttls` or `ssl` |
+| `SMTP_USERNAME` | Your mail account username |
+| `SMTP_PASSWORD` | Your mail account/app password |
+| `SMTP_FROM` | One sender email address permitted by the provider |
+
+Credentials are read from container environment variables, not stored in the invoice database or returned by the API. Both username and password must be supplied together; leaving both blank supports a trusted TLS relay. TLS certificate verification is required with no unencrypted fallback. SMTP server acceptance does not prove inbox delivery: recipient filters, bounces and provider attachment limits still apply. Check your provider's SMTP settings and use an app password if required. Do not publish credential screenshots or export populated container templates publicly. The app has no login and must remain on your trusted LAN/WireGuard VPN.
+
+History shows queued, sending, accepted by mail server, failed or delivery uncertain, with the original recipient. A saved invoice and its email job are committed together. Email failures do not roll back an already saved invoice or consume another number. Repeating a save with the same save token returns the existing invoice and never queues another email, even if the checkbox changes. The contact's saved email is checked again during creation; changed recipient details require refreshing the form. Later contact edits do not redirect queued mail. Unticked invoices cannot be emailed through a repeated save request.
+
+Pending jobs resume on startup and the existing 30-second container health check. One persistent processing lease coordinates workers. Interrupted sending attempts become delivery uncertain after the 120-second lease; failed and uncertain emails are never retried automatically. **Retry email** in History requires confirmation of the original address and checking the recipient inbox/provider logs first, because another attempt may create a duplicate. Retry sends the original saved PDF without regenerating it or advancing any counter. Accepted-by-server emails do not have a resend button. The app allows 20 queue/retry requests per installation per hour and PDFs up to 20 MB before MIME encoding; the provider may impose a lower limit.
+
+Latest-test removal is blocked for sending, accepted or uncertain email invoices so an issued number cannot be reused. A queued or definitely failed test invoice can still be removed, cancelling its queued email. No bulk email, booking-app integration or automatic retry of uncertain sends is included. Tests use mocked SMTP; after configuring credentials, send a small test invoice to a contact address you control and verify the attachment arrives.
+
+For v0.26 onward, commit reviewed text changes under `app/` and increment `app/VERSION`; the workflow overlays these files on the latest existing public archive, keeping its sanitized template. No new Word document or release ZIP upload is required. `scripts/package_release.py` can generate a complete local release ZIP from that same build context when needed. It never includes the private appdata template, database or credentials. The workflow checks the bundled email tests as well as actual container startup/PDF conversion before publishing.

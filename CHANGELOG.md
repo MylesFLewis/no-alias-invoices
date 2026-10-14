@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.26 — 14 October 2026
+
+- Add an optional Email invoice to contact checkbox, recipient display and server-side validation against the selected saved contact.
+- Deliver the final saved PDF through certificate-verified STARTTLS/SSL SMTP, with a durable queue and delivery status in History.
+- Preserve invoices on mail failure, prevent duplicate save requests from sending twice, and require confirmation for manual retries after failed or uncertain delivery.
+- Block test removal/number reuse for sent, sending or uncertain invoices; keep contact numbering, downloads and folder copies.
+- Add optional SMTP fields to the Unraid template and configuration guidance in Settings.
+
 ## v0.25 — 6 October 2026
 
 - Added an Assigned contact dropdown to the venue form, populated with existing contacts.
@@ -166,3 +174,4 @@
 - Added invoice history, saved PDF downloads and full database backups.
 - Added Docker deployment for Unraid with persistent appdata.
 - Corrected the account number and sort code field mapping in the template.
+

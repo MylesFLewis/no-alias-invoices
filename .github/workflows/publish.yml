@@ -2,7 +2,7 @@ name: Build invoice image
 on:
   push:
     branches: [main]
-    paths: ['releases/**', 'scripts/**', '.github/workflows/**']
+    paths: ['app/**', 'releases/**', 'scripts/**', '.github/workflows/**', 'unraid/**']
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,6 +29,8 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
           SOURCE: https://github.com/${{ github.repository }}
         run: docker build --label "org.opencontainers.image.source=$SOURCE" --label "org.opencontainers.image.version=$VERSION" -t "$IMAGE:latest" -t "$IMAGE:v$VERSION" _build
+      - name: Test invoice email and migrations
+        run: docker run --rm -e DATA_DIR=/tmp/invoice-tests --entrypoint python '${{ steps.image.outputs.name }}:latest' -m unittest discover -s tests -v
       - name: Test container startup and PDF generation
         run: |
           docker run -d --name invoice-smoke -p 18085:8080 -e DATA_DIR=/tmp/invoice-data '${{ steps.image.outputs.name }}:latest'
@@ -58,3 +60,4 @@ jobs:
       - name: Clean up
         if: always()
         run: docker rm -f invoice-smoke || true
+
