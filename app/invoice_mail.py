@@ -87,7 +87,6 @@ def requested_contact(c,raw,data):
     recipient=address(contact['email'])
     if raw.get('email_recipient')!=recipient:
         raise ValueError('The contact email changed. Refresh and review the recipient before saving.')
-    # Keep the PDF recipient aligned with the saved contact used for delivery.
     data['customer_email']=recipient
     data['customer_contact_name']=contact['contact_name']
     data['customer_address']=contact['address']
@@ -123,6 +122,21 @@ class DeliveryError(Exception):
         self.uncertain=uncertain
 
 
+def _smtp_error_detail(error):
+    """Return useful provider diagnostics without logging SMTP credentials."""
+    parts=[type(error).__name__]
+    code=getattr(error,'smtp_code',None)
+    response=getattr(error,'smtp_error',None)
+    if code is not None:parts.append('code='+str(code))
+    if isinstance(response,bytes):
+        response=response.decode('utf-8','replace')
+    if response:
+        parts.append('response='+str(response).replace('\r',' ').replace('\n',' ')[:1000])
+    elif str(error):
+        parts.append('detail='+str(error).replace('\r',' ').replace('\n',' ')[:1000])
+    return '; '.join(parts)
+
+
 def deliver(job,pdf,number,settings):
     try:options=config()
     except ValueError as error:raise DeliveryError(str(error)) from None
@@ -139,25 +153,30 @@ def deliver(job,pdf,number,settings):
     message.add_attachment(pdf,maintype='application',subtype='pdf',filename=number+' Invoice.pdf')
     context=ssl.create_default_context();transmitting=False;server=None
     try:
+        logging.info('Invoice SMTP: connecting to %s:%s using %s for invoice %s',options['host'],options['port'],options['security'],number)
         if options['security']=='ssl':
             server=smtplib.SMTP_SSL(options['host'],options['port'],timeout=10,context=context)
         else:
             server=smtplib.SMTP(options['host'],options['port'],timeout=10)
             server.ehlo();server.starttls(context=context);server.ehlo()
-        if options['username']:server.login(options['username'],options['password'])
+        if options['username']:
+            logging.info('Invoice SMTP: authenticating as %s',options['username'])
+            server.login(options['username'],options['password'])
         transmitting=True
         refused=server.send_message(message,from_addr=options['sender'],to_addrs=[job['recipient']])
         if refused:raise DeliveryError('The mail server rejected the recipient. Check the saved address.')
+        logging.info('Invoice SMTP: mail server accepted invoice %s for delivery',number)
     except DeliveryError:raise
-    except (smtplib.SMTPRecipientsRefused,smtplib.SMTPDataError,smtplib.SMTPSenderRefused):
+    except (smtplib.SMTPRecipientsRefused,smtplib.SMTPDataError,smtplib.SMTPSenderRefused) as error:
+        logging.error('Invoice SMTP rejected invoice %s: %s',number,_smtp_error_detail(error))
         raise DeliveryError('The mail server rejected the message. Check the recipient and SMTP configuration.') from None
-    except Exception:
+    except Exception as error:
+        logging.error('Invoice SMTP failure for invoice %s before_acceptance=%s: %s',number,not transmitting,_smtp_error_detail(error))
         if transmitting:
             raise DeliveryError('Delivery is uncertain. Check the recipient inbox or provider logs before retrying.',True) from None
         raise DeliveryError('Email could not be sent. Check SMTP configuration and connectivity, then retry from History.') from None
     finally:
         if server is not None:
-            # QUIT failure after acceptance must not turn a successful send into a retry.
             try:server.quit()
             except Exception:
                 try:server.close()
@@ -200,10 +219,12 @@ def run(connection):
             error=None
             try:deliver(job,job['pdf'],job['display_number'],json.loads(job['settings']))
             except DeliveryError as issue:error=issue
-            except Exception:error=DeliveryError('Delivery is uncertain. Check provider logs before retrying.',True)
+            except Exception as issue:
+                logging.exception('Unexpected invoice email worker failure for invoice %s',job.get('display_number','unknown'))
+                error=DeliveryError('Delivery is uncertain. Check provider logs before retrying.',True)
             finish(connection,job,error)
     except Exception:
-        logging.error('Invoice email worker interrupted; review History for delivery status.')
+        logging.exception('Invoice email worker interrupted; review History for delivery status.')
     finally:LOCK.release()
 
 
@@ -212,4 +233,4 @@ def kick(connection):
     try:threading.Thread(target=run,args=(connection,),daemon=True).start()
     except Exception:
         LOCK.release()
-        logging.error('Invoice email worker could not start; queued mail will resume on the next health check.')
+        logging.exception('Invoice email worker could not start; queued mail will resume on the next health check.')
