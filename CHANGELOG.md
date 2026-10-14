@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.28
+
+- Added Microsoft Graph email delivery for Microsoft personal Outlook/Hotmail accounts.
+- Added OAuth 2.0 device-code authentication using Microsoft MSAL.
+- Microsoft authentication is cached securely in persistent `/data` storage.
+- Added `EMAIL_PROVIDER`, `MICROSOFT_CLIENT_ID` and `MICROSOFT_SENDER` container settings.
+- Existing SMTP delivery remains available for non-Microsoft email providers.
+- Added Microsoft Graph delivery logging and duplicate-send protection.
+- Updated the Unraid template for Microsoft Graph configuration.
+
 ## v0.27 — 14 October 2026
 
 - Added detailed SMTP diagnostics to the Docker log for invoice email failures, including the SMTP exception type, provider response code and provider response text where available.
