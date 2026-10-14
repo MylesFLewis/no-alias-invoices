@@ -248,8 +248,8 @@ class Handler(BaseHTTPRequestHandler):
                     if raw.get('confirm') != latest['display_number']:
                         raise ValueError('Enter the invoice number to confirm removal.')
                     mail=invoice_mail.status(c,identifier)
-                    if mail and mail['status'] in ('sending','sent','uncertain'):
-                        raise ValueError('An invoice sent or possibly sent by email cannot be removed as a test invoice or have its number reused.')
+                    if mail and mail['status'] in ('sending','uncertain'):
+                        raise ValueError('An invoice currently sending or with uncertain delivery cannot be removed as a test invoice or have its number reused.')
                     sequence=latest['sequence_number']
                     if latest['contact_id'] is None:
                         current=c.execute('SELECT next_number FROM settings WHERE id=1').fetchone()[0]
@@ -384,4 +384,3 @@ if __name__=='__main__':
     logging.basicConfig(level=logging.INFO)
     invoice_mail.kick(connection)
     ThreadingHTTPServer(('0.0.0.0',int(os.getenv('PORT','8080'))),Handler).serve_forever()
-
