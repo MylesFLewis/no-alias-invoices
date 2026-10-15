@@ -9,8 +9,8 @@ extract(ROOT)
 SOURCE=ROOT/'_build'
 VERSION=(SOURCE/'VERSION').read_text().strip()
 if not re.fullmatch(r'\d+\.\d+(?:\.\d+)?',VERSION):raise ValueError('Invalid version')
-files=['.dockerignore','CHANGELOG.md','Dockerfile','VERSION','app.py','documents.py','invoice_mail.py','requirements.txt',
-       'static/app.js','static/index.html','static/style.css','templates/invoice.docx','tests/test_invoice_email.py']
+files=['.dockerignore','CHANGELOG.md','Dockerfile','VERSION','app.py','documents.py','invoice_mail.py','microsoft_graph.py','connect_microsoft.py','bootstrap.py','requirements.txt',
+       'static/app.js','static/index.html','static/style.css','templates/invoice.docx','tests/test_invoice_email.py','tests/test_microsoft_connection.py']
 target=ROOT/'releases'/('no-alias-invoices-v'+VERSION+'.zip');target.parent.mkdir(exist_ok=True)
 with zipfile.ZipFile(target,'w',compression=zipfile.ZIP_DEFLATED) as archive:
     for name in files:

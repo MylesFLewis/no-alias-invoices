@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.30 — 15 October 2026
+
+- Add Connect/Reconnect Microsoft account, device sign-in code, mailbox confirmation, cancellation and Disconnect to Settings.
+- Allow one shared personal-account app registration across separate servers while storing each mailbox authorisation only in that server's appdata.
+- Preserve existing MSAL caches and the console connection command; make MICROSOFT_SENDER optional when the connected mailbox supplies the sender.
+- Bind sign-in codes to the initiating browser, enforce polling intervals/expiry, preserve the previous connection until confirmation and prevent late cancelled attempts from restoring access.
+- Serialize private token-cache writes across processes, keep cache files mode 0600, and block mailbox changes while invoice email is queued or sending.
+- Show connection status without token refresh network calls; keep Graph errors generic and prevent credential-bearing redirects.
+
+## v0.29 — 14 October 2026
+
+- Allow removing the latest emailed test invoice with a warning that the email cannot be recalled; reset its counter for reuse.
+- Keep invoices currently sending or with uncertain delivery protected.
+
 ## v0.28
 
 - Added Microsoft Graph email delivery for Microsoft personal Outlook/Hotmail accounts.

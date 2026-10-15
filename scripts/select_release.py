@@ -36,7 +36,7 @@ def extract(root):
             for name in ['.dockerignore','CHANGELOG.md','Dockerfile','VERSION','app.py','documents.py',
                          'invoice_mail.py','microsoft_graph.py','connect_microsoft.py','bootstrap.py',
                          'requirements.txt','static/app.js','static/index.html','static/style.css',
-                         'tests/test_invoice_email.py']:
+                         'tests/test_invoice_email.py','tests/test_microsoft_connection.py']:
                 path=source/name
                 if path.is_file():
                     dest=target/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(path,dest)

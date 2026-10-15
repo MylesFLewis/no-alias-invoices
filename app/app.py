@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 import json, sqlite3, os, logging, re, tempfile, csv, io, hashlib, time
 from documents import generate
 import invoice_mail
+import microsoft_graph
 BASE=Path(__file__).resolve().parent
 DATA=Path(os.getenv('DATA_DIR','/data')); DATA.mkdir(parents=True,exist_ok=True)
 DB=DATA/'invoices.sqlite3'
@@ -173,6 +174,19 @@ def venue_csv_plan(c,content):
     fingerprint=hashlib.sha256(json.dumps(rows,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     return dict(rows=rows,preview_hash=fingerprint,can_import=not any(row['error'] for row in rows),counts={label:sum(row['action']==label and not row['error'] for row in rows) for label in ['Create','Update','Unchanged']},errors=sum(bool(row['error']) for row in rows))
 
+def microsoft_status():
+    result={'enabled':os.getenv('EMAIL_PROVIDER','smtp').strip().lower()=='microsoft_graph',
+            'configured':False,'connected':False,'username':'','message':'Set MICROSOFT_CLIENT_ID and EMAIL_PROVIDER=microsoft_graph in the container.'}
+    try:
+        identifier=microsoft_graph.client_id()
+        result['configured']=True
+        identity=microsoft_graph.connection_info(identifier)
+        if identity:result.update(connected=True,username=identity['username'])
+        result['message']='Connected to '+identity['username']+'.' if identity else 'Ready to connect your Microsoft account.'
+    except (ValueError,RuntimeError):pass
+    return result
+
+
 class Handler(BaseHTTPRequestHandler):
     def reply(self,status,body,kind='application/json',name=None):
         if kind=='application/json':body=json.dumps(body).encode()
@@ -191,7 +205,7 @@ class Handler(BaseHTTPRequestHandler):
         with connection() as c:
             if path=='/api/state':
                 s=c.execute('SELECT * FROM settings').fetchone()
-                return self.reply(200,{'branding':{'business_name':os.getenv('BUSINESS_NAME','').strip()},'settings':json.loads(s['body']),'smtp':invoice_mail.configuration_status(),'next':f"{s['next_number']:04d}",'contacts':[dict(r) for r in c.execute('SELECT * FROM contacts ORDER BY name')], 'invoices':[dict(**json.loads(r['body']),id=r['number'],number=r['display_number'],created=r['created'],email=invoice_mail.status(c,r['number'])) for r in c.execute('SELECT number,display_number,body,created FROM invoices ORDER BY number DESC')]})
+                return self.reply(200,{'branding':{'business_name':os.getenv('BUSINESS_NAME','').strip()},'settings':json.loads(s['body']),'smtp':invoice_mail.configuration_status(),'microsoft':microsoft_status(),'next':f"{s['next_number']:04d}",'contacts':[dict(r) for r in c.execute('SELECT * FROM contacts ORDER BY name')], 'invoices':[dict(**json.loads(r['body']),id=r['number'],number=r['display_number'],created=r['created'],email=invoice_mail.status(c,r['number'])) for r in c.execute('SELECT number,display_number,body,created FROM invoices ORDER BY number DESC')]})
             m=re.fullmatch(r'/api/invoices/(\d+)/pdf',path)
             if m:
                 r=c.execute('SELECT pdf,display_number FROM invoices WHERE number=?',(int(m[1]),)).fetchone()
@@ -214,6 +228,23 @@ class Handler(BaseHTTPRequestHandler):
             limit=2*1024*1024 if path in ('/api/venues/csv-preview','/api/venues/csv-import') else 65536
             if not 0<size<=limit:raise ValueError('Invalid request size')
             raw=json.loads(self.rfile.read(size))
+            if path.startswith('/api/microsoft/'):
+                if os.getenv('EMAIL_PROVIDER','smtp').strip().lower()!='microsoft_graph':
+                    raise ValueError('Set EMAIL_PROVIDER=microsoft_graph in the container to use Microsoft sign-in.')
+                identifier=microsoft_graph.client_id()
+                owner=raw.get('owner')
+                if path=='/api/microsoft/start':return self.reply(200,microsoft_graph.start(identifier,owner))
+                if path=='/api/microsoft/status':return self.reply(200,microsoft_graph.poll(identifier,owner))
+                if path=='/api/microsoft/cancel':return self.reply(200,microsoft_graph.cancel(owner))
+                if path in ('/api/microsoft/confirm','/api/microsoft/disconnect'):
+                    if raw.get('confirmed') is not True:raise ValueError('Confirm the Microsoft account action.')
+                    with connection() as c:
+                        c.execute('BEGIN IMMEDIATE')
+                        if c.execute("SELECT COUNT(*) FROM invoice_mail WHERE status IN ('pending','sending')").fetchone()[0]:
+                            raise ValueError('Wait for queued or sending invoice emails to finish before changing the Microsoft connection.')
+                        result=microsoft_graph.disconnect() if path.endswith('/disconnect') else microsoft_graph.confirm(identifier,owner,raw.get('username'))
+                    return self.reply(200,result)
+                return self.reply(404,{'error':'Not found'})
             with connection() as c:
                 if path in ('/api/venues/csv-preview','/api/venues/csv-import'):
                     if path.endswith('csv-import'):c.execute('BEGIN IMMEDIATE')

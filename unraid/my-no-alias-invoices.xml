@@ -5,17 +5,17 @@
   <Registry>https://ghcr.io</Registry>
   <Network>bridge</Network>
   <Privileged>false</Privileged>
-  <Overview>Local invoice generator with saved recipients, venues and PDF history.
+  <Overview>Local invoice generator with saved recipients, venues and PDF history. Keep the app on your trusted LAN or VPN; it has no administrator login.
 
-INVOICE EMAIL
-Set Email provider to microsoft_graph for Outlook.com/Hotmail personal accounts. Set Microsoft client ID to the Application (client) ID from the No Alias Invoices app registration, and Microsoft sender to the Microsoft email account that will send invoices. Leave Microsoft client ID and sender blank in shared/public templates.
+MICROSOFT EMAIL (OUTLOOK.COM / HOTMAIL)
+Set Email provider to microsoft_graph and Microsoft client ID to your Application (client) ID. Multiple servers can reuse that registration while connecting separate mailboxes. It must support personal Microsoft accounts, delegated Mail.Send and public client device-code flows. No client secret or public callback URL is needed.
 
-After first installing v0.28, open the container Console and run:
-python /app/connect_microsoft.py
+Open app Settings, choose Connect Microsoft account, open Microsoft's sign-in link and enter the displayed code. Check the connected mailbox and choose Use this account. Microsoft sender is optional: blank uses the connected mailbox; if set, it must match that mailbox. Reconnect, Cancel and Disconnect are available in Settings. Existing connections survive updates. The console command python /app/connect_microsoft.py remains available.
 
-Follow the Microsoft device-login instructions shown. The renewable token cache is stored under /data and therefore persists with Appdata backups and container updates.
+Keep each server's appdata separate and private. The renewable token cache is stored in /data. Do not copy one server's cache to another or share populated configuration screenshots. Public templates leave account values blank.
 
-For non-Microsoft providers, leave Email provider as smtp and use the existing SMTP settings. TLS is required.</Overview>
+OTHER EMAIL PROVIDERS
+Leave Email provider as smtp and configure the SMTP fields. TLS is required. Preserve your existing Appdata, invoice PDF folder and host port when updating.</Overview>
   <Category>Productivity:</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <Project>https://github.com/mylesflewis/no-alias-invoices</Project>
@@ -27,8 +27,8 @@ For non-Microsoft providers, leave Email provider as smtp and use the existing S
   <Config Name="Business name" Target="BUSINESS_NAME" Default="" Mode="" Description="Business name shown in the app and on invoices." Type="Variable" Display="always" Required="false" Mask="false" />
   <Config Name="Company logo" Target="COMPANY_LOGO" Default="" Mode="" Description="PNG/JPEG URL or container path, e.g. /data/logo.png." Type="Variable" Display="always" Required="false" Mask="false" />
   <Config Name="Email provider" Target="EMAIL_PROVIDER" Default="smtp" Mode="" Description="Use smtp for conventional SMTP providers or microsoft_graph for Outlook.com/Hotmail OAuth." Type="Variable" Display="always" Required="false" Mask="false">smtp</Config>
-  <Config Name="Microsoft client ID" Target="MICROSOFT_CLIENT_ID" Default="" Mode="" Description="Application (client) ID from the Microsoft app registration. No client secret is used." Type="Variable" Display="always" Required="false" Mask="false" />
-  <Config Name="Microsoft sender" Target="MICROSOFT_SENDER" Default="" Mode="" Description="Microsoft account email address used to send invoices." Type="Variable" Display="always" Required="false" Mask="false" />
+  <Config Name="Microsoft client ID" Target="MICROSOFT_CLIENT_ID" Default="" Mode="" Description="Application (client) ID. May be shared across servers with separate mailbox authorisations. Connect in app Settings; no client secret is used." Type="Variable" Display="always" Required="false" Mask="false" />
+  <Config Name="Microsoft sender" Target="MICROSOFT_SENDER" Default="" Mode="" Description="Optional expected Microsoft mailbox. Blank uses the connected account; if set, it must match the account confirmed in Settings." Type="Variable" Display="always" Required="false" Mask="false" />
   <Config Name="SMTP host" Target="SMTP_HOST" Default="" Mode="" Description="Mail server hostname. Used when Email provider is smtp." Type="Variable" Display="always" Required="false" Mask="false" />
   <Config Name="SMTP port" Target="SMTP_PORT" Default="587" Mode="" Description="Normally 587 for STARTTLS or 465 for SSL." Type="Variable" Display="always" Required="false" Mask="false">587</Config>
   <Config Name="SMTP security" Target="SMTP_SECURITY" Default="starttls" Mode="" Description="starttls or ssl." Type="Variable" Display="always" Required="false" Mask="false">starttls</Config>

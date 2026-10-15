@@ -25,24 +25,16 @@ def config():
     if provider != "microsoft_graph":
         raise ValueError("EMAIL_PROVIDER must be smtp or microsoft_graph.")
 
-    client_id = os.getenv("MICROSOFT_CLIENT_ID", "").strip()
-    sender = os.getenv("MICROSOFT_SENDER", "").strip()
-    if not re.fullmatch(
-        r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
-        client_id,
-    ):
-        raise ValueError("Set a valid MICROSOFT_CLIENT_ID in the container.")
+    identifier = microsoft_graph.client_id()
+    identity = microsoft_graph.connection_info(identifier)
+    sender = os.getenv("MICROSOFT_SENDER", "").strip() or (identity["username"] if identity else "")
     try:
         sender = invoice_mail.address(sender)
     except ValueError:
-        raise ValueError(
-            "Set MICROSOFT_SENDER to the Microsoft email address used for invoice mail."
-        ) from None
-    return {
-        "provider": "microsoft_graph",
-        "client_id": client_id,
-        "sender": sender,
-    }
+        raise ValueError("Connect a Microsoft account in Settings to enable invoice email.") from None
+    if identity and sender.casefold()!=identity["username"].casefold():
+        raise ValueError("The connected mailbox differs from MICROSOFT_SENDER. Reconnect the intended mailbox in Settings.")
+    return {"provider":"microsoft_graph","client_id":identifier,"sender":sender}
 
 
 def configuration_status():
@@ -50,14 +42,15 @@ def configuration_status():
         return _original_status()
     try:
         options = config()
-        connected = microsoft_graph.access_token(options["client_id"]) is not None
+        identity = microsoft_graph.connection_info(options["client_id"])
+        connected = identity is not None
         return {
             "configured": connected,
             "message": (
-                "Microsoft Graph connected. Invoice email is ready."
+                "Microsoft Graph connected as " + identity["username"] + ". Invoice email is ready."
                 if connected
                 else "Microsoft Graph configured but not connected. "
-                     "Open the container console and run: python /app/connect_microsoft.py"
+                     "Connect Microsoft account in Settings."
             ),
         }
     except (ValueError, RuntimeError) as error:
@@ -108,11 +101,12 @@ def deliver(job, pdf, number, settings):
         filename=number + " Invoice.pdf",
     )
 
-    if microsoft_graph.access_token(options["client_id"]) is None:
-        raise invoice_mail.DeliveryError(
-            "Microsoft account is not connected. Open the container console and run: "
-            "python /app/connect_microsoft.py"
-        )
+    try:
+        connected = microsoft_graph.access_token(options["client_id"]) is not None
+    except Exception:
+        raise invoice_mail.DeliveryError("Microsoft authorisation could not be refreshed. Reconnect in Settings; no email was submitted.") from None
+    if not connected:
+        raise invoice_mail.DeliveryError("Microsoft account needs reconnecting in Settings; no email was submitted.")
 
     logging.info(
         "Invoice Microsoft Graph: submitting invoice %s to %s",
@@ -124,6 +118,8 @@ def deliver(job, pdf, number, settings):
             options["client_id"],
             message.as_bytes(),
         )
+    except microsoft_graph.GraphNotConnected:
+        raise invoice_mail.DeliveryError("Microsoft account needs reconnecting in Settings; no email was submitted.") from None
     except microsoft_graph.GraphRejected as error:
         logging.error(
             "Invoice Microsoft Graph rejected invoice %s: %s",
@@ -134,12 +130,8 @@ def deliver(job, pdf, number, settings):
             "Microsoft rejected the email request. Check the Microsoft connection "
             "and retry from History."
         ) from None
-    except Exception as error:
-        logging.error(
-            "Invoice Microsoft Graph submission became uncertain for invoice %s: %s",
-            number,
-            str(error)[:1200],
-        )
+    except Exception:
+        logging.error("Invoice Microsoft Graph submission became uncertain for invoice %s", number)
         raise invoice_mail.DeliveryError(
             "Delivery is uncertain. Check Sent Items or the recipient inbox before retrying.",
             True,
@@ -156,8 +148,12 @@ def deliver(job, pdf, number, settings):
     )
 
 
-invoice_mail.config = config
-invoice_mail.configuration_status = configuration_status
-invoice_mail.deliver = deliver
+def install():
+    invoice_mail.config = config
+    invoice_mail.configuration_status = configuration_status
+    invoice_mail.deliver = deliver
 
-runpy.run_module("app", run_name="__main__")
+
+if __name__ == "__main__":
+    install()
+    runpy.run_module("app", run_name="__main__")

@@ -4,3 +4,7 @@ __pycache__
 *.db
 .env
 invoice-template.docx
+microsoft-token-cache.json
+microsoft-account.json
+microsoft-connection.lock
+.microsoft-*

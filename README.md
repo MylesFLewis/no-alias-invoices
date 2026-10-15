@@ -136,6 +136,41 @@ History shows queued, sending, accepted by mail server, failed or delivery uncer
 
 Pending jobs resume on startup and the existing 30-second container health check. One persistent processing lease coordinates workers. Interrupted sending attempts become delivery uncertain after the 120-second lease; failed and uncertain emails are never retried automatically. **Retry email** in History requires confirmation of the original address and checking the recipient inbox/provider logs first, because another attempt may create a duplicate. Retry sends the original saved PDF without regenerating it or advancing any counter. Accepted-by-server emails do not have a resend button. The app allows 20 queue/retry requests per installation per hour and PDFs up to 20 MB before MIME encoding; the provider may impose a lower limit.
 
-Latest-test removal is blocked for sending, accepted or uncertain email invoices so an issued number cannot be reused. A queued or definitely failed test invoice can still be removed, cancelling its queued email. No bulk email, booking-app integration or automatic retry of uncertain sends is included. Tests use mocked SMTP; after configuring credentials, send a small test invoice to a contact address you control and verify the attachment arrives.
+Latest-test removal is blocked while sending or delivery is uncertain. Since v0.29, the latest emailed test invoice can be removed with an explicit warning that deletion cannot recall its email; its counter is reset for reuse. Only use this for a test invoice. Removing a queued test invoice cancels its queued email. No bulk email, booking-app integration or automatic retry of uncertain sends is included. Tests use mocked SMTP; after configuring credentials, send a small test invoice to a contact address you control and verify the attachment arrives.
 
 For v0.26 onward, commit reviewed text changes under `app/` and increment `app/VERSION`; the workflow overlays these files on the latest existing public archive, keeping its sanitized template. No new Word document or release ZIP upload is required. `scripts/package_release.py` can generate a complete local release ZIP from that same build context when needed. It never includes the private appdata template, database or credentials. The workflow checks the bundled email tests as well as actual container startup/PDF conversion before publishing.
+
+## Connect Microsoft in Settings (v0.30)
+
+Outlook.com/Hotmail personal accounts can use Microsoft Graph instead of password-based SMTP. The invoice app remains local-only with no login: keep its interface on a trusted LAN or WireGuard VPN. Microsoft sign-in does not add administrator login to the invoice app.
+
+### One registration, separate servers
+
+Reuse your existing Microsoft app registration's **Application (client) ID** on each server. It must support **personal Microsoft accounts**, have delegated Microsoft Graph **Mail.Send**, and have **Allow public client flows** enabled for device-code authentication. The app uses the consumers authority and MSAL's sign-in/offline authorisation support; it does not request permission to read mailbox contents. No client secret, public invoice-app URL, OAuth callback URL or inbound router port is required for this device-code flow. Registration changes or removal can affect all installations that use it. References: [Microsoft device-code flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code) and [Graph sendMail permissions](https://learn.microsoft.com/en-us/graph/api/user-sendmail).
+
+On each Unraid server retain its own existing appdata and invoice-output mappings, then configure:
+
+| Variable | Value |
+|---|---|
+| `EMAIL_PROVIDER` | `microsoft_graph` |
+| `MICROSOFT_CLIENT_ID` | The same Application (client) ID on both servers |
+| `MICROSOFT_SENDER` | Optional: that server's intended mailbox address, or blank to use the connected mailbox |
+
+Your dad signs in using his own Outlook.com account on his server; do not copy your token cache to his server. Only the public application ID is shared. Existing SMTP settings are retained and used when `EMAIL_PROVIDER=smtp`. Credentials are never committed to the repository; the public Unraid template leaves account-specific values blank.
+
+### Connect or reconnect
+
+1. Update the image and open **Settings → Microsoft account → Connect Microsoft account** (or Reconnect).
+2. Open the Microsoft sign-in link displayed by the app and enter the code shown in Settings. Sign in to the intended personal Microsoft account and approve sending email. Only enter a code you personally started on your own invoice server.
+3. Return to Settings. Check the mailbox shown and click **Use this account**. If MICROSOFT_SENDER is set, it must match that mailbox, ignoring case. For an alias mismatch, use the connected account's displayed address in the container setting or leave the setting blank; changing aliases is outside this release.
+4. Send a small test invoice to an address you control, check History and confirm the PDF arrives. Automated tests mock Microsoft; a live check after deployment is still required.
+
+The old working connection stays in place while a replacement sign-in is pending or awaiting mailbox confirmation. Cancel leaves it intact. A browser reload in the same tab can resume a pending code; a container restart or expired code requires starting sign-in again, while an already saved connection remains. Polling respects Microsoft's wait intervals and slow-down response. Only the browser session that started a code can view/confirm/cancel that attempt. One pending attempt is allowed per running installation, with a short start cooldown. Do not share device-code screenshots.
+
+The interface shows the connected mailbox and does not refresh tokens just to display status. Refresh occurs when sending, so Microsoft can still require reconnection after consent revocation or token expiry. The existing `python /app/connect_microsoft.py` console command remains available for administrators.
+
+### Disconnect and storage
+
+**Disconnect** cancels pending sign-in and removes the stored token cache on that server. It does not delete invoices, recall emails, disconnect another server, or revoke the shared registration itself. To withdraw consent at Microsoft too, remove the application's access in the connected Microsoft account's app-permissions/privacy settings. Switching or disconnecting is blocked while invoice emails are queued or sending; let them complete or reach a failed state first, then use History's existing confirmed retry if appropriate.
+
+Existing `/data/microsoft-token-cache.json` connections remain supported on upgrade. Token caches are protected by 0600 file permissions and atomic replacement under an inter-process lock; they are not encrypted at rest by this app. `/data/microsoft-account.json` stores the selected account and a connection revision so cancelled or superseded sign-ins cannot restore credentials. Pending sign-in codes/candidate tokens remain in process memory until confirmation and are never included in the general state response or logs. Back up appdata privately; its token cache grants mailbox sending access. Each server must have a separate appdata folder.
