@@ -1,7 +1,7 @@
 FROM python:3.12-slim-bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends libreoffice-writer fonts-liberation fonts-crosextra-carlito && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY requirements.txt .
+COPY requirements.txt VERSION .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py documents.py invoice_mail.py microsoft_graph.py connect_microsoft.py bootstrap.py ./
 COPY tests ./tests
