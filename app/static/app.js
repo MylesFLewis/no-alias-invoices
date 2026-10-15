@@ -83,6 +83,9 @@ function renderMicrosoft(){
   $('#microsoft-flow').hidden=!microsoftFlow||['idle','other_browser'].includes(microsoftFlow.status);
   $('#microsoft-confirm').hidden=microsoftFlow?.status!=='ready';
   $('#microsoft-confirm').disabled=$('#microsoft-cancel').disabled=microsoftBusy;
+  const signin=microsoftFlow?.verification_uri;
+  if(['https://microsoft.com/devicelogin','https://www.microsoft.com/devicelogin','https://microsoft.com/link','https://www.microsoft.com/link'].includes(signin))$('#microsoft-signin-link').href=signin;
+  else $('#microsoft-signin-link').removeAttribute('href');
   $('#microsoft-code').textContent=microsoftFlow?.user_code||'';
   $('#microsoft-progress').textContent=microsoftFlow?.status==='ready'?`Signed in as ${microsoftFlow.username}. Check this is the mailbox to use, then choose Use this account.`:microsoftFlow?.message|| (microsoftFlow?.status==='pending'?`Waiting for Microsoft sign-in. Code expires at ${new Date(microsoftFlow.expires_at*1000).toLocaleTimeString()}. Your current connection is kept until you confirm the new mailbox.`:'');
 }

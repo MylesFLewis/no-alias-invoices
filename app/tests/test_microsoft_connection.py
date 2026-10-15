@@ -69,6 +69,31 @@ class ConnectionFixture(unittest.TestCase):
         graph._cache_path().write_text(cache.serialize())
 
 class MicrosoftConnectionTests(ConnectionFixture):
+    def test_personal_account_uses_provider_link_for_code(self):
+        original=FakeApplication.initiate_device_flow
+        def personal(application,scopes):
+            result=original(application,scopes)
+            result['verification_uri']='https://www.microsoft.com/link'
+            return result
+        with patch.object(FakeApplication,'initiate_device_flow',personal):
+            started=graph.start(CLIENT,OWNER)
+        self.assertEqual(started['verification_uri'],'https://www.microsoft.com/link')
+        self.assertEqual(graph.poll(CLIENT,OWNER)['verification_uri'],'https://www.microsoft.com/link')
+
+    def test_untrusted_verification_links_are_rejected(self):
+        original=FakeApplication.initiate_device_flow
+        for uri in [None,'https://evil.example/link','javascript:alert(1)','http://www.microsoft.com/link',
+                    'https://www.microsoft.com.evil.example/link','https://evil@www.microsoft.com/link',
+                    'https://www.microsoft.com:443/link','https://www.microsoft.com/link?redirect=evil',
+                    'https://www.microsoft.com/link#evil']:
+            def bad(application,scopes):
+                result=original(application,scopes);result['verification_uri']=uri;return result
+            graph.LAST_START=0
+            with patch.object(FakeApplication,'initiate_device_flow',bad):
+                with self.assertRaises(ValueError):graph.start(CLIENT,OWNER)
+            self.assertIsNone(graph.FLOW)
+        self.assertFalse(graph._cache_path().exists())
+
     def test_connect_requires_explicit_mailbox_confirmation_and_hides_secrets(self):
         started=graph.start(CLIENT,OWNER)
         self.assertEqual(started['verification_uri'],'https://microsoft.com/devicelogin')
@@ -274,6 +299,15 @@ class MicrosoftEndpointTests(ConnectionFixture):
         os.environ['EMAIL_PROVIDER']='smtp'
         self.assertEqual(self.post('start')[0],400)
         self.assertFalse(self.created)
+
+
+class InterfaceVersionTests(unittest.TestCase):
+    def test_displayed_version_matches_release(self):
+        root=Path(__file__).resolve().parents[1]
+        version=(root/'VERSION').read_text().strip()
+        page=(root/'static/index.html').read_text()
+        self.assertIn('INVOICE APP · v'+version,page)
+        self.assertIn('current version v'+version,page)
 
 
 if __name__=='__main__':unittest.main()

@@ -15,6 +15,7 @@ import urllib.error
 import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import msal
 
@@ -155,8 +156,17 @@ def _expire():
         FLOW=None
 
 
+def verification_uri(value):
+    if not isinstance(value,str):raise ValueError('Microsoft did not supply a sign-in URL.')
+    parsed=urlsplit(value)
+    if (parsed.scheme!='https' or parsed.netloc not in ('microsoft.com','www.microsoft.com')
+            or parsed.path not in ('/link','/devicelogin') or parsed.query or parsed.fragment):
+        raise ValueError('Microsoft returned an unsupported sign-in URL.')
+    return value
+
+
 def _public(flow):
-    return {"status":flow["status"],"user_code":flow["user_code"],"verification_uri":VERIFY_URL,
+    return {"status":flow["status"],"user_code":flow["user_code"],"verification_uri":flow.get("verification_uri",""),
             "expires_at":flow["expires_at"],"username":flow.get("username",""),
             "message":flow.get("message",""),"retry_after":max(1,int(flow.get("next_poll",0)-time.time())+1)}
 
@@ -182,11 +192,12 @@ def start(identifier,owner):
         code=device.get("user_code")
         if not isinstance(code,str) or not re.fullmatch(r"[A-Za-z0-9-]{4,32}",code) or not device.get("device_code"):
             raise ValueError("Microsoft sign-in could not start. Check that the registration supports personal accounts and public client flows.")
+        uri=verification_uri(device.get("verification_uri"))
         seconds=int(device.get("expires_in",900))
         if not 30<=seconds<=1800:raise ValueError("Microsoft returned an invalid sign-in expiry. Try again.")
         with FLOW_LOCK:
             if not FLOW or FLOW["id"]!=flow_id:raise ValueError("Microsoft connection was cancelled.")
-            FLOW.update(status="pending",user_code=code,expires_at=time.time()+seconds,
+            FLOW.update(status="pending",user_code=code,verification_uri=uri,expires_at=time.time()+seconds,
                         application=application,cache=cache,device=device,next_poll=time.time()+max(5,int(device.get("interval",5))))
             return _public(FLOW)
     except Exception:
@@ -291,7 +302,7 @@ def connect(identifier,output=print):
     """Keep the console command compatible with the same guarded connection flow."""
     owner=secrets.token_hex(32)
     info=start(identifier,owner)
-    output("Open "+VERIFY_URL+" and enter code "+info["user_code"]+".")
+    output("Open "+info["verification_uri"]+" and enter code "+info["user_code"]+".")
     while info["status"] in ("pending","starting"):
         time.sleep(min(30,info.get("retry_after",5)))
         info=poll(identifier,owner)

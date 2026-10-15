@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.31 — 15 October 2026
+
+- Use the verification URL returned with each Microsoft device code instead of hardcoding the device-login page; support the personal-account Microsoft link page.
+- Validate returned sign-in URLs against an exact HTTPS Microsoft allowlist and use the same URL in Settings and console setup.
+- Add regression tests for personal-account URLs and rejected untrusted URLs.
+
 ## v0.30 — 15 October 2026
 
 - Add Connect/Reconnect Microsoft account, device sign-in code, mailbox confirmation, cancellation and Disconnect to Settings.
