@@ -35,6 +35,18 @@ jobs:
         run: |
           docker run -d --name invoice-smoke -p 18085:8080 -e DATA_DIR=/tmp/invoice-data '${{ steps.image.outputs.name }}:latest'
           python3 scripts/smoke_test.py
+      - name: Test visual email editor in Chrome
+        run: |
+          docker exec -i invoice-smoke python - < scripts/prepare_editor_browser_check.py
+          google-chrome --headless --no-sandbox --disable-gpu --virtual-time-budget=20000 --dump-dom http://127.0.0.1:18085/ > /tmp/invoice-editor-check.html
+          python3 - <<'PYTEST'
+          from pathlib import Path
+          page = Path('/tmp/invoice-editor-check.html').read_text()
+          if 'data-editor-test="passed"' not in page:
+              print(page[-12000:])
+              raise SystemExit('Visual editor browser check failed')
+          print('Visual editor formatting, save, field insertion, preview and safe paste passed')
+          PYTEST
       - name: Log in to GitHub Container Registry
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,5 +1,6 @@
 """Durable, single-recipient invoice delivery. No automatic uncertain retries."""
 import os
+import json
 import logging
 import re
 import secrets
@@ -9,6 +10,7 @@ import threading
 import time
 from email.message import EmailMessage
 from email.utils import formatdate
+import email_templates
 
 LEASE = 120
 MAX_PDF = 20 * 1024 * 1024
@@ -66,6 +68,7 @@ def migrate(c):
         CREATE TABLE IF NOT EXISTS invoice_mail_guard (
         slot INTEGER PRIMARY KEY CHECK(slot=1), owner TEXT NOT NULL, expires_at REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS invoice_mail_requests (recorded_at REAL NOT NULL);''')
+    email_templates.migrate(c)
 
 
 def request_limit(c,clock):
@@ -96,6 +99,7 @@ def requested_contact(c,raw,data):
 def queue(c,identifier,recipient,pdf,clock):
     if len(pdf)>MAX_PDF:raise ValueError('This PDF exceeds the 20 MB invoice email limit. Save without emailing.')
     request_limit(c,clock)
+    email_templates.snapshot(c,identifier)
     c.execute("INSERT INTO invoice_mail VALUES(?,?,'pending',?,?,'',?)",
               (identifier,recipient,clock,clock,'<'+secrets.token_hex(24)+'@no-alias-invoices.local>'))
 
@@ -137,20 +141,28 @@ def _smtp_error_detail(error):
     return '; '.join(parts)
 
 
+def message_for(job,pdf,number,settings,sender):
+    if not isinstance(pdf,bytes) or not pdf.startswith(b'%PDF') or len(pdf)>MAX_PDF:
+        raise DeliveryError('Saved invoice PDF is unavailable or too large to email.')
+    content={'subject':job.get('email_subject'),'html':job.get('email_html'),'plain':job.get('email_plain')}
+    if content['subject'] is None:
+        body=json.loads(job.get('body') or '{}')
+        legacy_settings=dict(settings)
+        legacy_settings['business']=os.getenv('BUSINESS_NAME','').strip() or settings.get('business','')
+        content=email_templates.render(email_templates.DEFAULT_SUBJECT,email_templates.DEFAULT_HTML,
+            email_templates.context(body,legacy_settings,number))
+    message=EmailMessage()
+    message['From']=sender;message['To']=address(job['recipient']);message['Subject']=content['subject']
+    message['Message-ID']=job['message_id'];message['Date']=formatdate(usegmt=True)
+    message.set_content(content['plain']);message.add_alternative(content['html'],subtype='html')
+    message.add_attachment(pdf,maintype='application',subtype='pdf',filename=number+' Invoice.pdf')
+    return message
+
+
 def deliver(job,pdf,number,settings):
     try:options=config()
     except ValueError as error:raise DeliveryError(str(error)) from None
-    if not isinstance(pdf,bytes) or not pdf.startswith(b'%PDF') or len(pdf)>MAX_PDF:
-        raise DeliveryError('Saved invoice PDF is unavailable or too large to email.')
-    message=EmailMessage()
-    message['From']=options['sender'];message['To']=address(job['recipient'])
-    message['Subject']='Invoice '+number
-    message['Message-ID']=job['message_id']
-    message['Date']=formatdate(usegmt=True)
-    business=os.getenv('BUSINESS_NAME','').strip() or settings.get('business','') or 'No Alias Entertainment'
-    message.set_content('Hello,\n\nPlease find invoice '+number+' attached as a PDF.\n'
-                        'The invoice contains the payment details and terms.\n\nKind regards,\n'+business+'\n')
-    message.add_attachment(pdf,maintype='application',subtype='pdf',filename=number+' Invoice.pdf')
+    message=message_for(job,pdf,number,settings,options['sender'])
     context=ssl.create_default_context();transmitting=False;server=None
     try:
         logging.info('Invoice SMTP: connecting to %s:%s using %s for invoice %s',options['host'],options['port'],options['security'],number)
@@ -190,7 +202,7 @@ def claim(connection,clock):
         if guard and guard['expires_at']>clock:return None
         c.execute("UPDATE invoice_mail SET status='uncertain',updated_at=?,last_error=? WHERE status='sending'",
                   (clock,'Delivery was interrupted. Check for an earlier delivery before retrying.'))
-        row=c.execute("SELECT m.*,i.pdf,i.display_number,i.settings FROM invoice_mail m JOIN invoices i ON i.number=m.invoice_id WHERE m.status='pending' ORDER BY m.created_at,m.invoice_id LIMIT 1").fetchone()
+        row=c.execute("SELECT m.*,i.pdf,i.display_number,i.settings,i.body,e.subject AS email_subject,e.html AS email_html,e.plain AS email_plain FROM invoice_mail m JOIN invoices i ON i.number=m.invoice_id LEFT JOIN invoice_email_content e ON e.invoice_id=m.invoice_id WHERE m.status='pending' ORDER BY m.created_at,m.invoice_id LIMIT 1").fetchone()
         if not row:
             c.execute('DELETE FROM invoice_mail_guard');return None
         owner=secrets.token_hex(24)

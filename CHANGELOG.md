@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.32 — 16 October 2026
+
+- Add a local WYSIWYG invoice email editor in Settings with custom subject, formatting, headings, lists, alignment, links, images and fixed invoice/business fields.
+- Add isolated sample preview, plain-text alternative, sanitised paste, saved-template reload and default-draft reset.
+- Use one HTML/plain-text template for SMTP and Microsoft Graph while attaching the original saved invoice PDF.
+- Snapshot rendered email content atomically when queueing; preserve that content on retries and remove it with deleted test invoices.
+- Sanitize HTML with a pinned nh3 dependency, escape invoice fields, reject header injection/unknown fields and guard concurrent template edits.
+
 ## v0.31 — 15 October 2026
 
 - Use the verification URL returned with each Microsoft device code instead of hardcoding the device-login page; support the personal-account Microsoft link page.

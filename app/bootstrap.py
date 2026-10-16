@@ -66,40 +66,8 @@ def deliver(job, pdf, number, settings):
     except ValueError as error:
         raise invoice_mail.DeliveryError(str(error)) from None
 
-    if (
-        not isinstance(pdf, bytes)
-        or not pdf.startswith(b"%PDF")
-        or len(pdf) > invoice_mail.MAX_PDF
-    ):
-        raise invoice_mail.DeliveryError(
-            "Saved invoice PDF is unavailable or too large to email."
-        )
-
     recipient = invoice_mail.address(job["recipient"])
-    message = EmailMessage()
-    message["From"] = options["sender"]
-    message["To"] = recipient
-    message["Subject"] = "Invoice " + number
-    message["Message-ID"] = job["message_id"]
-    message["Date"] = formatdate(usegmt=True)
-
-    business = (
-        os.getenv("BUSINESS_NAME", "").strip()
-        or settings.get("business", "")
-        or "No Alias Entertainment"
-    )
-    message.set_content(
-        "Hello,\n\n"
-        "Please find invoice " + number + " attached as a PDF.\n"
-        "The invoice contains the payment details and terms.\n\n"
-        "Kind regards,\n" + business + "\n"
-    )
-    message.add_attachment(
-        pdf,
-        maintype="application",
-        subtype="pdf",
-        filename=number + " Invoice.pdf",
-    )
+    message = invoice_mail.message_for(job,pdf,number,settings,options["sender"])
 
     try:
         connected = microsoft_graph.access_token(options["client_id"]) is not None

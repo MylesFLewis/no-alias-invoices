@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 import json, sqlite3, os, logging, re, tempfile, csv, io, hashlib, time
 from documents import generate
 import invoice_mail
+import email_templates
 import microsoft_graph
 BASE=Path(__file__).resolve().parent
 DATA=Path(os.getenv('DATA_DIR','/data')); DATA.mkdir(parents=True,exist_ok=True)
@@ -195,9 +196,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers();self.wfile.write(body)
     def do_GET(self):
         path=urlparse(self.path).path
-        if path in ('/','/app.js','/style.css'):
-            file={'/':'index.html','/app.js':'app.js','/style.css':'style.css'}[path]
-            return self.reply(200,(BASE/'static'/file).read_bytes(),{'/':'text/html; charset=utf-8','/app.js':'text/javascript; charset=utf-8','/style.css':'text/css; charset=utf-8'}[path])
+        if path in ('/','/app.js','/style.css','/email_editor.js'):
+            file={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/email_editor.js':'email_editor.js'}[path]
+            return self.reply(200,(BASE/'static'/file).read_bytes(),{'/':'text/html; charset=utf-8','/app.js':'text/javascript; charset=utf-8','/style.css':'text/css; charset=utf-8','/email_editor.js':'text/javascript; charset=utf-8'}[path])
         if path=='/api/venues/csv-template':return self.reply(200,b'Venue name,Address,Company name\r\n','text/csv; charset=utf-8','venue-import-template.csv')
         if path=='/health':
             invoice_mail.kick(connection)
@@ -205,7 +206,7 @@ class Handler(BaseHTTPRequestHandler):
         with connection() as c:
             if path=='/api/state':
                 s=c.execute('SELECT * FROM settings').fetchone()
-                return self.reply(200,{'branding':{'business_name':os.getenv('BUSINESS_NAME','').strip()},'settings':json.loads(s['body']),'smtp':invoice_mail.configuration_status(),'microsoft':microsoft_status(),'next':f"{s['next_number']:04d}",'contacts':[dict(r) for r in c.execute('SELECT * FROM contacts ORDER BY name')], 'invoices':[dict(**json.loads(r['body']),id=r['number'],number=r['display_number'],created=r['created'],email=invoice_mail.status(c,r['number'])) for r in c.execute('SELECT number,display_number,body,created FROM invoices ORDER BY number DESC')]})
+                return self.reply(200,{'branding':{'business_name':os.getenv('BUSINESS_NAME','').strip()},'settings':json.loads(s['body']),'smtp':invoice_mail.configuration_status(),'microsoft':microsoft_status(),'email_template':email_templates.get(c),'email_template_defaults':{'subject':email_templates.DEFAULT_SUBJECT,'html':email_templates.DEFAULT_HTML},'email_fields':email_templates.FIELDS,'next':f"{s['next_number']:04d}",'contacts':[dict(r) for r in c.execute('SELECT * FROM contacts ORDER BY name')], 'invoices':[dict(**json.loads(r['body']),id=r['number'],number=r['display_number'],created=r['created'],email=invoice_mail.status(c,r['number'])) for r in c.execute('SELECT number,display_number,body,created FROM invoices ORDER BY number DESC')]})
             m=re.fullmatch(r'/api/invoices/(\d+)/pdf',path)
             if m:
                 r=c.execute('SELECT pdf,display_number FROM invoices WHERE number=?',(int(m[1]),)).fetchone()
@@ -246,6 +247,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(200,result)
                 return self.reply(404,{'error':'Not found'})
             with connection() as c:
+                if path=='/api/email-template/clean':
+                    return self.reply(200,{'html':email_templates.clean_html(raw.get('html'))})
+                if path=='/api/email-template/preview':
+                    return self.reply(200,email_templates.preview(raw.get('subject'),raw.get('html')))
+                if path=='/api/email-template':
+                    c.execute('BEGIN IMMEDIATE')
+                    template=email_templates.save(c,raw)
+                    c.commit()
+                    return self.reply(200,template)
                 if path in ('/api/venues/csv-preview','/api/venues/csv-import'):
                     if path.endswith('csv-import'):c.execute('BEGIN IMMEDIATE')
                     plan=venue_csv_plan(c,raw.get('csv',''))
@@ -291,6 +301,7 @@ class Handler(BaseHTTPRequestHandler):
                         if not contact or contact['invoice_prefix']!=latest['number_prefix'] or contact['next_invoice_number']!=sequence+1:
                             raise ValueError('The contact counter has changed since this invoice. It cannot be reset automatically.')
                         c.execute('UPDATE contacts SET next_invoice_number=? WHERE id=?',(sequence,latest['contact_id']))
+                    c.execute('DELETE FROM invoice_email_content WHERE invoice_id=?',(identifier,))
                     c.execute('DELETE FROM invoice_mail WHERE invoice_id=?',(identifier,))
                     c.execute('DELETE FROM invoices WHERE number=?',(identifier,))
                     c.commit()

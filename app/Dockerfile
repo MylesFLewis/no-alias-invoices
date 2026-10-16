@@ -3,7 +3,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libreoffice-wri
 WORKDIR /app
 COPY requirements.txt VERSION .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py documents.py invoice_mail.py microsoft_graph.py connect_microsoft.py bootstrap.py ./
+COPY app.py documents.py invoice_mail.py email_templates.py microsoft_graph.py connect_microsoft.py bootstrap.py ./
 COPY tests ./tests
 COPY templates ./templates
 COPY static ./static
