@@ -3,10 +3,11 @@ from pathlib import Path
 from urllib.parse import urlparse
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
-import json, sqlite3, os, logging, re, tempfile, csv, io, hashlib, time
+import json, sqlite3, os, logging, re, tempfile, csv, io, hashlib, hmac, time
 from documents import generate
 import invoice_mail
 import email_templates
+import booking_import
 import microsoft_graph
 BASE=Path(__file__).resolve().parent
 DATA=Path(os.getenv('DATA_DIR','/data')); DATA.mkdir(parents=True,exist_ok=True)
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS invoices (number INTEGER PRIMARY KEY, token TEXT UNIQ
     c.execute('CREATE UNIQUE INDEX IF NOT EXISTS invoice_display_number ON invoices(display_number)')
     c.execute('INSERT OR IGNORE INTO settings VALUES (1,?,1)',(json.dumps(DEFAULTS),))
     invoice_mail.migrate(c)
+    booking_import.migrate(c)
 def clean(value,limit=2000):
     if not isinstance(value,str) or len(value)>limit: raise ValueError('Invalid or overlong text field.')
     return value.strip()
@@ -122,6 +124,36 @@ def saved_result(identifier,number,pdf,email=None):
     if warning:result['warning']=warning
     return result
 
+def save_invoice(c,raw):
+    token=clean(raw.get('token',''),100)
+    if not token:raise ValueError('Missing save token')
+    data=invoice(raw)
+    recipient=invoice_mail.requested_contact(c,raw,data)
+    contact_payment_terms(c,data)
+    validate_venues(c,data)
+    s=c.execute('SELECT * FROM settings').fetchone()
+    contact=c.execute("SELECT * FROM contacts WHERE kind='customer' AND name=?",(data['customer'],)).fetchone()
+    separate=contact is not None and bool(contact['separate_numbering'])
+    n=contact['next_invoice_number'] if separate else s['next_number']
+    prefix=contact['invoice_prefix'] if separate else ''
+    display=f'{prefix}{n:04d}'
+    if c.execute('SELECT 1 FROM invoices WHERE display_number=?',(display,)).fetchone():
+        raise ValueError('This invoice number already exists. Change the prefix or next number.')
+    identifier=c.execute('SELECT COALESCE(MAX(number),0)+1 FROM invoices').fetchone()[0]
+    pdf=generate(data,json.loads(s['body']),display)
+    c.execute('INSERT INTO invoices(number,token,body,settings,pdf,display_number,sequence_number,contact_id,number_prefix) VALUES (?,?,?,?,?,?,?,?,?)',(identifier,token,json.dumps(data),s['body'],pdf,display,n,contact['id'] if separate else None,prefix))
+    if recipient is not None:
+        invoice_mail.queue(c,identifier,recipient,pdf,time.time())
+    if separate:
+        c.execute('UPDATE contacts SET next_invoice_number=? WHERE id=?',(n+1,contact['id']))
+    else:
+        c.execute('UPDATE settings SET next_number=? WHERE id=1',(n+1,))
+    return identifier,display,pdf
+
+def booking_reference(c,identifier):
+    row=c.execute('SELECT reference FROM booking_invoices WHERE invoice_id=?',(identifier,)).fetchone()
+    return row['reference'] if row else None
+
 def venue_csv_plan(c,content):
     if not isinstance(content,str) or len(content.encode('utf-8'))>1024*1024:
         raise ValueError('Choose a CSV file up to 1 MB.')
@@ -206,7 +238,7 @@ class Handler(BaseHTTPRequestHandler):
         with connection() as c:
             if path=='/api/state':
                 s=c.execute('SELECT * FROM settings').fetchone()
-                return self.reply(200,{'branding':{'business_name':os.getenv('BUSINESS_NAME','').strip()},'settings':json.loads(s['body']),'smtp':invoice_mail.configuration_status(),'microsoft':microsoft_status(),'email_template':email_templates.get(c),'email_template_defaults':{'subject':email_templates.DEFAULT_SUBJECT,'html':email_templates.DEFAULT_HTML},'email_fields':email_templates.FIELDS,'next':f"{s['next_number']:04d}",'contacts':[dict(r) for r in c.execute('SELECT * FROM contacts ORDER BY name')], 'invoices':[dict(**json.loads(r['body']),id=r['number'],number=r['display_number'],created=r['created'],email=invoice_mail.status(c,r['number'])) for r in c.execute('SELECT number,display_number,body,created FROM invoices ORDER BY number DESC')]})
+                return self.reply(200,{'branding':{'business_name':os.getenv('BUSINESS_NAME','').strip()},'settings':json.loads(s['body']),'smtp':invoice_mail.configuration_status(),'microsoft':microsoft_status(),'email_template':email_templates.get(c),'email_template_defaults':{'subject':email_templates.DEFAULT_SUBJECT,'html':email_templates.DEFAULT_HTML},'email_fields':email_templates.FIELDS,'next':f"{s['next_number']:04d}",'contacts':[dict(r) for r in c.execute('SELECT * FROM contacts ORDER BY name')], 'invoices':[dict(**json.loads(r['body']),id=r['number'],number=r['display_number'],created=r['created'],email=invoice_mail.status(c,r['number']),booking_reference=booking_reference(c,r['number'])) for r in c.execute('SELECT number,display_number,body,created FROM invoices ORDER BY number DESC')]})
             m=re.fullmatch(r'/api/invoices/(\d+)/pdf',path)
             if m:
                 r=c.execute('SELECT pdf,display_number FROM invoices WHERE number=?',(int(m[1]),)).fetchone()
@@ -218,7 +250,58 @@ class Handler(BaseHTTPRequestHandler):
                     with sqlite3.connect(target) as out:c.backup(out)
                     return self.reply(200,target.read_bytes(),'application/octet-stream','no-alias-backup.sqlite3')
         self.reply(404,{'error':'Not found'})
+    def booking_api(self,path):
+        if self.headers.get('Origin') or not booking_import.authorized(self.headers.get('Authorization')):
+            return self.reply(403,{'error':'Booking integration authorization required.'})
+        try:
+            if self.headers.get('Content-Type','').split(';')[0]!='application/json':raise ValueError('JSON required.')
+            size=int(self.headers.get('Content-Length','0'))
+            if not 0<size<=16384:raise ValueError('Booking request too large.')
+            raw=json.loads(self.rfile.read(size))
+            booking_import.identity(raw)
+            with connection() as c:
+                c.execute('BEGIN IMMEDIATE')
+                clock=time.time()
+                c.execute('DELETE FROM booking_api_requests WHERE requested<=?',(clock-60,))
+                if c.execute('SELECT COUNT(*) FROM booking_api_requests').fetchone()[0]>=60:
+                    c.commit();return self.reply(429,{'error':'Too many booking requests. Wait a minute.'})
+                c.execute('INSERT INTO booking_api_requests VALUES(?)',(clock,));c.commit()
+                c.execute('BEGIN IMMEDIATE')
+                current=booking_import.status(c,raw,invoice_mail.status)
+                if path=='/api/bookings/status':return self.reply(200,current)
+                if path=='/api/bookings/contacts':
+                    return self.reply(200,{'contacts':booking_import.contacts(c),'email_available':invoice_mail.configuration_status()['configured'],'invoice':current})
+                if path not in ('/api/bookings/review','/api/bookings/create'):return self.reply(404,{'error':'Not found'})
+                if current['created']:return self.reply(200,current)
+                draft,selected,signature=booking_import.prepare(c,raw,invoice,invoice_mail.address)
+                if draft['email_invoice'] and not invoice_mail.configuration_status()['configured']:
+                    raise ValueError('Configure invoice email delivery before choosing email.')
+                if path.endswith('/review'):
+                    summary=invoice(draft);contact_payment_terms(c,summary)
+                    return self.reply(200,{'review_token':signature,'contact':selected,'summary':summary,'email_recipient':selected['email'] if draft['email_invoice'] else ''})
+                token=raw.get('review_token','')
+                if not isinstance(token,str) or not hmac.compare_digest(token,signature):
+                    raise ValueError('Invoice details or settings changed. Review again before creating.')
+                if raw['contact']['mode']=='new':
+                    identifier=next_contact_id(c)
+                    c.execute("INSERT INTO contacts(id,kind,name,contact_name,email,address) VALUES(?,'customer',?,?,?,?)",
+                        (identifier,selected['name'],selected['contact_name'],selected['email'],selected['address']))
+                    draft['email_contact_id']=identifier
+                identifier,display,pdf=save_invoice(c,draft)
+                c.execute('INSERT INTO booking_invoices VALUES(?,?,?,?,?)',(raw['source'],raw['booking'],raw.get('reference',''),identifier,display))
+                c.commit()
+                result=saved_result(identifier,display,pdf,invoice_mail.status(c,identifier))
+                result.update(created=True,removed=False)
+            invoice_mail.kick(connection)
+            return self.reply(201,result)
+        except (ValueError,TypeError,KeyError) as error:return self.reply(400,{'error':str(error)})
+        except Exception:
+            logging.exception('Booking invoice import failed')
+            return self.reply(500,{'error':'Invoice creation did not complete. Check status before retrying.'})
+
     def do_POST(self):
+        if urlparse(self.path).path.startswith('/api/bookings/'):
+            return self.booking_api(urlparse(self.path).path)
         # JSON + same-origin requests prevent cross-site form submissions.
         origin=self.headers.get('Origin')
         if origin and urlparse(origin).netloc != self.headers.get('Host'):return self.reply(403,{'error':'Invalid origin'})
@@ -303,6 +386,7 @@ class Handler(BaseHTTPRequestHandler):
                         c.execute('UPDATE contacts SET next_invoice_number=? WHERE id=?',(sequence,latest['contact_id']))
                     c.execute('DELETE FROM invoice_email_content WHERE invoice_id=?',(identifier,))
                     c.execute('DELETE FROM invoice_mail WHERE invoice_id=?',(identifier,))
+                    c.execute('UPDATE booking_invoices SET invoice_id=0 WHERE invoice_id=?',(identifier,))
                     c.execute('DELETE FROM invoices WHERE number=?',(identifier,))
                     c.commit()
                     result={'next':latest['display_number']}
@@ -395,26 +479,7 @@ class Handler(BaseHTTPRequestHandler):
                         c.commit()
                         invoice_mail.kick(connection)
                         return self.reply(200,saved_result(old['number'],old['display_number'],old['pdf'],invoice_mail.status(c,old['number'])))
-                    recipient=invoice_mail.requested_contact(c,raw,data)
-                    contact_payment_terms(c,data)
-                    validate_venues(c,data)
-                    s=c.execute('SELECT * FROM settings').fetchone()
-                    contact=c.execute("SELECT * FROM contacts WHERE kind='customer' AND name=?",(data['customer'],)).fetchone()
-                    separate=contact is not None and bool(contact['separate_numbering'])
-                    n=contact['next_invoice_number'] if separate else s['next_number']
-                    prefix=contact['invoice_prefix'] if separate else ''
-                    display=f'{prefix}{n:04d}'
-                    if c.execute('SELECT 1 FROM invoices WHERE display_number=?',(display,)).fetchone():
-                        raise ValueError('This invoice number already exists. Change the prefix or next number.')
-                    identifier=c.execute('SELECT COALESCE(MAX(number),0)+1 FROM invoices').fetchone()[0]
-                    pdf=generate(data,json.loads(s['body']),display)
-                    c.execute('INSERT INTO invoices(number,token,body,settings,pdf,display_number,sequence_number,contact_id,number_prefix) VALUES (?,?,?,?,?,?,?,?,?)',(identifier,token,json.dumps(data),s['body'],pdf,display,n,contact['id'] if separate else None,prefix))
-                    if recipient is not None:
-                        invoice_mail.queue(c,identifier,recipient,pdf,time.time())
-                    if separate:
-                        c.execute('UPDATE contacts SET next_invoice_number=? WHERE id=?',(n+1,contact['id']))
-                    else:
-                        c.execute('UPDATE settings SET next_number=? WHERE id=1',(n+1,))
+                    identifier,display,pdf=save_invoice(c,raw)
                     c.commit()
                     invoice_mail.kick(connection)
                     return self.reply(201,saved_result(identifier,display,pdf,invoice_mail.status(c,identifier)))

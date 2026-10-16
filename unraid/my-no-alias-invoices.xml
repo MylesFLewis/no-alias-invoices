@@ -35,4 +35,5 @@ Leave Email provider as smtp and configure the SMTP fields. TLS is required. Pre
   <Config Name="SMTP username" Target="SMTP_USERNAME" Default="" Mode="" Description="SMTP username." Type="Variable" Display="always" Required="false" Mask="false" />
   <Config Name="SMTP password" Target="SMTP_PASSWORD" Default="" Mode="" Description="SMTP password. Keep private." Type="Variable" Display="always" Required="false" Mask="true" />
   <Config Name="SMTP sender" Target="SMTP_FROM" Default="" Mode="" Description="Sender address used when Email provider is smtp." Type="Variable" Display="always" Required="false" Mask="false" />
+  <Config Name="Bookings integration key" Target="BOOKINGS_API_KEY" Default="" Mode="" Description="Optional random shared key, 32-128 letters/numbers/underscore/hyphen. Set the same value as INVOICE_API_KEY in bookings. Private network only; blank disables integration." Type="Variable" Display="always" Required="false" Mask="true" />
 </Container>

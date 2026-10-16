@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.33 — 16 October 2026
+
+- Add a key-authenticated private booking integration with review before invoice/contact creation and optional email through the existing provider/template.
+- Reuse the manual invoice save path, saved contact details, contact numbering, payment terms, PDF export and durable email queue.
+- Persist booking-to-invoice links atomically, recover lost responses without duplicate invoices, and retain deletion tombstones when test invoice numbers are reused.
+- Reject stale reviews, browser-origin integration calls, redirects and oversized requests; keep credentials on the servers.
+- Show the originating booking reference in invoice History and add optional blank BOOKINGS_API_KEY to the Unraid template.
+
 ## v0.32 — 16 October 2026
 
 - Add a local WYSIWYG invoice email editor in Settings with custom subject, formatting, headings, lists, alignment, links, images and fixed invoice/business fields.
