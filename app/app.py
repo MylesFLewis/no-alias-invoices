@@ -57,7 +57,17 @@ def invoice(raw):
     lines=raw.get('lines',[])
     if not isinstance(lines,list) or not lines: raise ValueError('Add at least one service row.')
     for l in lines:
-        row={'date':valid_date(l.get('date','')),'other_details':clean(l.get('other_details',''),1000),'work_order_number':clean(l.get('work_order_number',''),200),'venue':clean(l.get('venue',''),500),'service':clean(l.get('service',''),500),'fee':pence(l.get('fee',''))}
+        inline=l.get('new_venue')
+        if inline is not None and (not isinstance(inline,dict) or l.get('venue_id') is not None):raise ValueError('Choose a saved venue or enter new venue details, not both.')
+        venue_text=clean(l.get('venue',''),702 if l.get('venue_id') is not None else 500) if inline is None else ''
+        row={'date':valid_date(l.get('date','')),'other_details':clean(l.get('other_details',''),1000),'work_order_number':clean(l.get('work_order_number',''),200),'venue':venue_text,'service':clean(l.get('service',''),500),'fee':pence(l.get('fee',''))}
+        if inline is not None:
+            name=clean(inline.get('name',''),200);address=clean(inline.get('address',''),500)
+            if not name or not address:raise ValueError('Enter the new venue name and address.')
+            owner=inline.get('contact_id')
+            if type(owner) is not int:raise ValueError('Choose the invoice contact before adding a venue.')
+            row['new_venue']={'name':name,'address':address,'contact_id':owner}
+            row['venue']=name+', '+address
         if not row['venue'] or not row['service']: raise ValueError('Every row needs a venue and service.')
         if l.get('venue_id') is not None:
             row['venue_id']=int(l['venue_id'])
@@ -73,10 +83,29 @@ def contact_payment_terms(c,data):
     except OverflowError:
         raise ValueError('The calculated due date falls outside the supported date range.')
 
-def validate_venues(c,data):
+def validate_venues(c,data,create=False):
     contact=c.execute("SELECT id FROM contacts WHERE kind='customer' AND name=?",(data['customer'],)).fetchone()
     contact_id=contact['id'] if contact else None
+    drafts={}
     for line in data['lines']:
+        inline=line.pop('new_venue',None)
+        if inline is not None:
+            if contact_id is None or inline['contact_id']!=contact_id:
+                raise ValueError('The invoice contact changed. Select the contact and review the new venue details again.')
+            name=inline['name'];address=inline['address'];key=name.casefold()
+            if key in drafts and drafts[key]!=address:
+                raise ValueError('The same new venue has different addresses in service rows. Use one address or distinct venue names.')
+            drafts[key]=address
+            matches=[r for r in c.execute("SELECT * FROM contacts WHERE kind='venue'") if r['name'].casefold()==key]
+            if matches:
+                if len(matches)!=1 or matches[0]['assigned_contact_id']!=contact_id or matches[0]['address']!=address:
+                    raise ValueError('A venue with this name already exists. Choose the saved venue or manage its details and assignment in Venues.')
+                line['venue_id']=matches[0]['id'];line['venue']=matches[0]['name']+(', '+matches[0]['address'] if matches[0]['address'] else '')
+            elif create:
+                identifier=next_contact_id(c)
+                c.execute("INSERT INTO contacts(id,kind,name,address,assigned_contact_id) VALUES(?,'venue',?,?,?)",(identifier,name,address,contact_id))
+                line['venue_id']=identifier
+            if create:c.execute('UPDATE contacts SET has_assigned_venues=1 WHERE id=?',(contact_id,))
         if 'venue_id' not in line:continue  # Preserve support for older API clients.
         venue=c.execute("SELECT * FROM contacts WHERE kind='venue' AND id=?",(line['venue_id'],)).fetchone()
         if not venue or venue['assigned_contact_id'] not in (None,contact_id):
@@ -130,7 +159,7 @@ def save_invoice(c,raw):
     data=invoice(raw)
     recipient=invoice_mail.requested_contact(c,raw,data)
     contact_payment_terms(c,data)
-    validate_venues(c,data)
+    validate_venues(c,data,create=True)
     s=c.execute('SELECT * FROM settings').fetchone()
     contact=c.execute("SELECT * FROM contacts WHERE kind='customer' AND name=?",(data['customer'],)).fetchone()
     separate=contact is not None and bool(contact['separate_numbering'])

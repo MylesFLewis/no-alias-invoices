@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.35 — 22 October 2026
+
+- Add Add new venue details... at the top of invoice service venue dropdowns, with inline venue name/address fields for the selected contact.
+- Save and assign new venues atomically with invoice completion; preview never saves venue records and failed saves roll everything back.
+- Enable assigned venues for the selected contact and refresh the saved Venues list/dropdowns after saving.
+- Reuse matching same-contact venue details across service rows and retries; reject conflicting names, addresses and ownership without overwriting saved venues.
+- Reset the inline venue selection when changing invoice contact and retain normal venue selection, numbering, email and PDF behavior.
+
 ## v0.34 — 22 October 2026
 
 - Clarify provider acceptance versus recipient delivery, with provider-specific History labels and guidance for Sent Items, bounces, junk, quarantine and phishing filters.
