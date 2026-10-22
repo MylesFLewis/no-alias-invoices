@@ -385,6 +385,7 @@ class Handler(BaseHTTPRequestHandler):
                             raise ValueError('The contact counter has changed since this invoice. It cannot be reset automatically.')
                         c.execute('UPDATE contacts SET next_invoice_number=? WHERE id=?',(sequence,latest['contact_id']))
                     c.execute('DELETE FROM invoice_email_content WHERE invoice_id=?',(identifier,))
+                    c.execute('DELETE FROM invoice_mail_attempts WHERE invoice_id=?',(identifier,))
                     c.execute('DELETE FROM invoice_mail WHERE invoice_id=?',(identifier,))
                     c.execute('UPDATE booking_invoices SET invoice_id=0 WHERE invoice_id=?',(identifier,))
                     c.execute('DELETE FROM invoices WHERE number=?',(identifier,))

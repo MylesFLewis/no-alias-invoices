@@ -11,6 +11,7 @@ import time
 from email.message import EmailMessage
 from email.utils import formatdate
 import email_templates
+import mail_diagnostics as diagnostics
 
 LEASE = 120
 MAX_PDF = 20 * 1024 * 1024
@@ -69,6 +70,7 @@ def migrate(c):
         slot INTEGER PRIMARY KEY CHECK(slot=1), owner TEXT NOT NULL, expires_at REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS invoice_mail_requests (recorded_at REAL NOT NULL);''')
     email_templates.migrate(c)
+    diagnostics.migrate(c)
 
 
 def request_limit(c,clock):
@@ -102,11 +104,14 @@ def queue(c,identifier,recipient,pdf,clock):
     email_templates.snapshot(c,identifier)
     c.execute("INSERT INTO invoice_mail VALUES(?,?,'pending',?,?,'',?)",
               (identifier,recipient,clock,clock,'<'+secrets.token_hex(24)+'@no-alias-invoices.local>'))
+    ref=diagnostics.queued(c,identifier,clock)
+    logging.info('Invoice email queued invoice=%s attempt=%s provider=%s',identifier,ref,diagnostics.provider())
 
 
 def status(c,identifier):
     row=c.execute('SELECT recipient,status,last_error FROM invoice_mail WHERE invoice_id=?',(identifier,)).fetchone()
-    return dict(row) if row else None
+    if row:return dict(row,**diagnostics.details(c,identifier,row['status']))
+    return None
 
 
 def retry(c,identifier,recipient,confirmed,clock):
@@ -118,32 +123,37 @@ def retry(c,identifier,recipient,confirmed,clock):
         raise ValueError('Confirm the saved recipient and check for an earlier delivery before retrying.')
     request_limit(c,clock)
     c.execute("UPDATE invoice_mail SET status='pending',updated_at=?,last_error='' WHERE invoice_id=?",(clock,identifier))
+    ref=diagnostics.queued(c,identifier,clock)
+    logging.info('Invoice email retry queued invoice=%s attempt=%s',identifier,ref)
 
 
 class DeliveryError(Exception):
-    def __init__(self,message,uncertain=False):
+    def __init__(self,message,uncertain=False,category='unknown'):
         super().__init__(message)
         self.uncertain=uncertain
+        self.category=category
 
 
 def _smtp_error_detail(error):
-    """Return useful provider diagnostics without logging SMTP credentials."""
-    parts=[type(error).__name__]
+    # Provider text may echo addresses, credentials or message content.
     code=getattr(error,'smtp_code',None)
-    response=getattr(error,'smtp_error',None)
-    if code is not None:parts.append('code='+str(code))
-    if isinstance(response,bytes):
-        response=response.decode('utf-8','replace')
-    if response:
-        parts.append('response='+str(response).replace('\r',' ').replace('\n',' ')[:1000])
-    elif str(error):
-        parts.append('detail='+str(error).replace('\r',' ').replace('\n',' ')[:1000])
-    return '; '.join(parts)
+    return type(error).__name__+(' code='+str(code) if type(code) is int else '')
+
+
+def smtp_category(error,transmitting):
+    code=getattr(error,'smtp_code',None)
+    if isinstance(error,smtplib.SMTPAuthenticationError):return 'authentication'
+    if isinstance(error,smtplib.SMTPRecipientsRefused):return 'recipient'
+    if isinstance(error,smtplib.SMTPSenderRefused):return 'sender'
+    if isinstance(error,ssl.SSLError):return 'tls'
+    if type(code) is int and 400<=code<500:return 'provider_unavailable'
+    if isinstance(error,smtplib.SMTPResponseException):return 'rejected'
+    return 'interrupted' if transmitting else 'connection'
 
 
 def message_for(job,pdf,number,settings,sender):
     if not isinstance(pdf,bytes) or not pdf.startswith(b'%PDF') or len(pdf)>MAX_PDF:
-        raise DeliveryError('Saved invoice PDF is unavailable or too large to email.')
+        raise DeliveryError('Saved invoice PDF is unavailable or too large to email.',category='pdf')
     content={'subject':job.get('email_subject'),'html':job.get('email_html'),'plain':job.get('email_plain')}
     if content['subject'] is None:
         body=json.loads(job.get('body') or '{}')
@@ -161,7 +171,7 @@ def message_for(job,pdf,number,settings,sender):
 
 def deliver(job,pdf,number,settings):
     try:options=config()
-    except ValueError as error:raise DeliveryError(str(error)) from None
+    except ValueError as error:raise DeliveryError(str(error),category='configuration') from None
     message=message_for(job,pdf,number,settings,options['sender'])
     context=ssl.create_default_context();transmitting=False;server=None
     try:
@@ -172,21 +182,23 @@ def deliver(job,pdf,number,settings):
             server=smtplib.SMTP(options['host'],options['port'],timeout=10)
             server.ehlo();server.starttls(context=context);server.ehlo()
         if options['username']:
-            logging.info('Invoice SMTP: authenticating as %s',options['username'])
+            logging.info('Invoice SMTP: authenticating invoice=%s attempt=%s',number,job.get('attempt_ref','legacy'))
             server.login(options['username'],options['password'])
         transmitting=True
         refused=server.send_message(message,from_addr=options['sender'],to_addrs=[job['recipient']])
-        if refused:raise DeliveryError('The mail server rejected the recipient. Check the saved address.')
+        if refused:raise DeliveryError('The mail server rejected the recipient. Check the saved address.',category='recipient')
         logging.info('Invoice SMTP: mail server accepted invoice %s for delivery',number)
     except DeliveryError:raise
     except (smtplib.SMTPRecipientsRefused,smtplib.SMTPDataError,smtplib.SMTPSenderRefused) as error:
         logging.error('Invoice SMTP rejected invoice %s: %s',number,_smtp_error_detail(error))
-        raise DeliveryError('The mail server rejected the message. Check the recipient and SMTP configuration.') from None
+        job.setdefault('diagnostics',{}).update(diagnostics.safe_metadata({'protocol_code':getattr(error,'smtp_code',None)}))
+        raise DeliveryError('The mail server rejected the message. Check the recipient and SMTP configuration.',category=smtp_category(error,transmitting)) from None
     except Exception as error:
         logging.error('Invoice SMTP failure for invoice %s before_acceptance=%s: %s',number,not transmitting,_smtp_error_detail(error))
         if transmitting:
-            raise DeliveryError('Delivery is uncertain. Check the recipient inbox or provider logs before retrying.',True) from None
-        raise DeliveryError('Email could not be sent. Check SMTP configuration and connectivity, then retry from History.') from None
+            raise DeliveryError('Delivery is uncertain. Check Sent Items or the recipient before retrying.',True,category=smtp_category(error,transmitting)) from None
+        job.setdefault('diagnostics',{}).update(diagnostics.safe_metadata({'protocol_code':getattr(error,'smtp_code',None)}))
+        raise DeliveryError('Email could not be sent. Check SMTP configuration and connectivity, then retry from History.',category=smtp_category(error,transmitting)) from None
     finally:
         if server is not None:
             try:server.quit()
@@ -200,6 +212,7 @@ def claim(connection,clock):
         c.execute('BEGIN IMMEDIATE')
         guard=c.execute('SELECT * FROM invoice_mail_guard WHERE slot=1').fetchone()
         if guard and guard['expires_at']>clock:return None
+        c.execute("UPDATE invoice_mail_attempts SET state='uncertain',category='interrupted',finished_at=? WHERE state='sending'",(clock,))
         c.execute("UPDATE invoice_mail SET status='uncertain',updated_at=?,last_error=? WHERE status='sending'",
                   (clock,'Delivery was interrupted. Check for an earlier delivery before retrying.'))
         row=c.execute("SELECT m.*,i.pdf,i.display_number,i.settings,i.body,e.subject AS email_subject,e.html AS email_html,e.plain AS email_plain FROM invoice_mail m JOIN invoices i ON i.number=m.invoice_id LEFT JOIN invoice_email_content e ON e.invoice_id=m.invoice_id WHERE m.status='pending' ORDER BY m.created_at,m.invoice_id LIMIT 1").fetchone()
@@ -208,7 +221,9 @@ def claim(connection,clock):
         owner=secrets.token_hex(24)
         c.execute('INSERT OR REPLACE INTO invoice_mail_guard VALUES(1,?,?)',(owner,clock+LEASE))
         c.execute("UPDATE invoice_mail SET status='sending',updated_at=? WHERE invoice_id=?",(clock,row['invoice_id']))
-        return dict(row,owner=owner)
+        attempt=diagnostics.start(c,row['invoice_id'],clock,row['updated_at'])
+        logging.info('Invoice email attempt started invoice=%s attempt=%s provider=%s',row['display_number'],attempt['ref'],attempt['provider'])
+        return dict(row,owner=owner,attempt_ref=attempt['ref'],diagnostics={'client_request_id':attempt['client_request_id']})
 
 
 def finish(connection,job,error=None):
@@ -219,6 +234,10 @@ def finish(connection,job,error=None):
         outcome='sent' if error is None else ('uncertain' if error.uncertain else 'failed')
         c.execute("UPDATE invoice_mail SET status=?,last_error=?,updated_at=? WHERE invoice_id=? AND status='sending'",
                   (outcome,str(error) if error else '',time.time(),job['invoice_id']))
+        if job.get('attempt_ref'):
+            diagnostics.finish(c,job['attempt_ref'],outcome,error.category if error else '',time.time(),job.get('diagnostics'))
+        metadata=diagnostics.safe_metadata(job.get('diagnostics'))
+        logging.info('Invoice email outcome invoice=%s attempt=%s provider=%s state=%s category=%s code=%s request_id=%s client_request_id=%s delivery_confirmed=false',job.get('display_number',job['invoice_id']),job.get('attempt_ref','legacy'),diagnostics.provider(),outcome,error.category if error else 'accepted',metadata.get('protocol_code',''),metadata.get('request_id',''),metadata.get('client_request_id',''))
         c.execute('DELETE FROM invoice_mail_guard WHERE owner=?',(job['owner'],))
 
 
@@ -232,7 +251,7 @@ def run(connection):
             try:deliver(job,job['pdf'],job['display_number'],json.loads(job['settings']))
             except DeliveryError as issue:error=issue
             except Exception as issue:
-                logging.exception('Unexpected invoice email worker failure for invoice %s',job.get('display_number','unknown'))
+                logging.error('Unexpected invoice email worker failure invoice=%s attempt=%s exception=%s',job.get('display_number','unknown'),job.get('attempt_ref','legacy'),type(issue).__name__)
                 error=DeliveryError('Delivery is uncertain. Check provider logs before retrying.',True)
             finish(connection,job,error)
     except Exception:

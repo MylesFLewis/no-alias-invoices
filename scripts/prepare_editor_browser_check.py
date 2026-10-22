@@ -1,6 +1,18 @@
 """Instrument only the disposable smoke container, never the published image."""
 from pathlib import Path
 
+# Synthetic accepted message in the disposable test database only; never send mail.
+import json,time
+import app
+import mail_diagnostics
+clock=time.time()
+with app.connection() as c:
+    c.execute("INSERT INTO invoices(number,token,body,settings,pdf,display_number,sequence_number,number_prefix) VALUES(999,'browser-diagnostics',?,? ,?,'DEMO0999',999,'DEMO')",
+        (json.dumps({'customer':'Synthetic diagnostics','date':'2026-10-22','deposit':0,'lines':[{'fee':10000}]}),'{}',b'%PDF synthetic'))
+    c.execute("INSERT INTO invoice_mail VALUES(999,'demo@example.com','sent',?,?,?,'<synthetic@example.com>')",(clock-20,clock,''))
+    ref=mail_diagnostics.queued(c,999,clock-20)
+    c.execute("UPDATE invoice_mail_attempts SET provider='microsoft_graph',state='sent',started_at=?,finished_at=?,protocol_code=202 WHERE ref=?",(clock-10,clock,ref))
+
 harness = r'''
 <script>
 (async () => {
@@ -15,6 +27,14 @@ harness = r'''
   const check = (value, message) => { if (!value) throw Error(message); };
   try {
     await wait(() => el('email-template-status').textContent.includes('Saved template loaded'));
+    document.querySelector('[data-tab="history"]').click();
+    const mail = document.querySelector('[data-mail-invoice="999"]');
+    check(mail.textContent.includes('Accepted by Microsoft — delivery not confirmed'), 'Acceptance label missing');
+    check(mail.textContent.includes('phishing filters'), 'Delivery troubleshooting missing');
+    mail.querySelector('summary').click();
+    check(mail.querySelector('details').open, 'Email details did not expand');
+    check(mail.textContent.includes('202') && mail.textContent.includes('Queued:') && mail.textContent.includes('Attempt '), 'Attempt timeline missing');
+    check(!mail.querySelector('button'), 'Accepted message incorrectly offers retry');
     document.querySelector('[data-tab="settings"]').click();
     const body = el('email-template-body'), subject = el('email-template-subject');
     body.innerHTML = '<p>Browser check {{client_name}}</p>';

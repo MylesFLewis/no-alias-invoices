@@ -34,9 +34,9 @@ def extract(root):
         if not re.fullmatch(r'\d+(?:\.\d+){1,2}',source_version):raise ValueError('Invalid source VERSION')
         if tuple(map(int,source_version.split('.')))>=tuple(map(int,version.split('.'))):
             for name in ['.dockerignore','CHANGELOG.md','Dockerfile','VERSION','app.py','documents.py',
-                         'invoice_mail.py','booking_import.py','email_templates.py','microsoft_graph.py','connect_microsoft.py','bootstrap.py',
+                         'invoice_mail.py','mail_diagnostics.py','booking_import.py','email_templates.py','microsoft_graph.py','connect_microsoft.py','bootstrap.py',
                          'requirements.txt','static/app.js','static/index.html','static/style.css','static/email_editor.js',
-                         'tests/test_invoice_email.py','tests/test_microsoft_connection.py','tests/test_email_templates.py','tests/test_booking_import.py']:
+                         'tests/test_invoice_email.py','tests/test_microsoft_connection.py','tests/test_email_templates.py','tests/test_booking_import.py','tests/test_mail_diagnostics.py']:
                 path=source/name
                 if path.is_file():
                     dest=target/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(path,dest)

@@ -46,10 +46,23 @@ function updateEmailControls(){
 }
 $('#email-invoice').onchange=updateEmailControls;
 function renderEmail(target,invoice){
-  target.replaceChildren();if(!invoice.email)return;
+  const wasOpen=target.querySelector('details')?.open;target.replaceChildren();if(!invoice.email)return;
   const email=invoice.email;
-  target.append(node('p',`Email ${emailLabels[email.status]||email.status} · ${email.recipient}`,'hint'));
+  target.append(node('p',`${email.label||emailLabels[email.status]||email.status} · ${email.recipient}`,'hint'));
   if(email.last_error)target.append(node('p',email.last_error,'hint'));
+  const details=node('details');details.open=!!wasOpen;details.append(node('summary','Email details'));
+  if(email.guidance)details.append(node('p',email.guidance,'hint'));
+  if(!email.history_available)details.append(node('p','Detailed attempt history is unavailable for emails sent before this update.','hint'));
+  const stamp=value=>value==null?'Not recorded':new Date(value*1000).toLocaleString('en-GB',{timeZone:'Europe/London',timeZoneName:'short'});
+  for(const attempt of email.attempts||[]){
+    const entry=node('div',null,'record');
+    entry.append(node('strong','Attempt '+attempt.ref),node('p',`Provider: ${{smtp:'SMTP',microsoft_graph:'Microsoft'}[attempt.provider]||'Unknown'} · ${attempt.state}${attempt.category?' · '+attempt.category.replaceAll('_',' '):''}`),node('p',`Queued: ${stamp(attempt.queued_at)} · Started: ${stamp(attempt.started_at)} · Finished: ${stamp(attempt.finished_at)}`,'hint'));
+    if(attempt.protocol_code!=null)entry.append(node('p','Provider response code: '+attempt.protocol_code,'hint'));
+    if(attempt.retry_after!=null)entry.append(node('p','Provider requested waiting at least '+attempt.retry_after+' seconds before another attempt. Retries remain manual.','hint'));
+    for(const [key,label] of [['request_id','Microsoft request ID'],['client_request_id','Client request ID']])if(attempt[key])entry.append(node('p',label+': '+attempt[key],'hint'));
+    details.append(entry);
+  }
+  target.append(details);
   if(['failed','uncertain'].includes(email.status)){
     const retry=node('button','Retry email','secondary');
     retry.onclick=()=>{if(busy)return;if(!confirm(`Retry invoice ${invoice.number} to ${email.recipient}? Check the inbox or provider logs first: a previous attempt may have delivered it. This sends the same saved PDF to the original address.`))return;work(async()=>{await api('/api/invoices/email-retry',{id:invoice.id,recipient:email.recipient,confirmed:true});await load();msg(`Email queued for invoice ${invoice.number}. Check History for the result.`)});};

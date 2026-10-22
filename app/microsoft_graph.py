@@ -313,6 +313,8 @@ def connect(identifier,output=print):
 
 class GraphRejected(RuntimeError):
     """Graph returned an HTTP response rejecting the request."""
+    def __init__(self,message,status=None):
+        super().__init__(message);self.status=status
 
 
 class GraphNotConnected(RuntimeError):
@@ -324,13 +326,27 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def send_mime(identifier,mime_bytes,timeout=20):
+def send_mime(identifier,mime_bytes,timeout=20,diagnostics=None):
+    import mail_diagnostics as metadata
     token=access_token(identifier)
     if not token:raise GraphNotConnected("Microsoft account needs reconnecting in Settings.")
     request=urllib.request.Request(GRAPH_SEND,data=base64.b64encode(mime_bytes),method="POST",
         headers={"Authorization":"Bearer "+token,"Content-Type":"text/plain"})
+    if diagnostics is not None:
+        client=metadata.safe_metadata(diagnostics).get('client_request_id')
+        if client:
+            request.add_header('client-request-id',client)
+            request.add_header('return-client-request-id','true')
+    def capture(code,headers):
+        if diagnostics is None:return
+        values={'protocol_code':code,'request_id':headers.get('request-id'),'client_request_id':headers.get('client-request-id')}
+        retry=headers.get('Retry-After','')
+        if isinstance(retry,str) and retry.isdigit() and len(retry)<=5:values['retry_after']=int(retry)
+        diagnostics.update(metadata.safe_metadata(values))
     try:
         with urllib.request.build_opener(NoRedirect()).open(request,timeout=timeout) as response:
+            capture(response.status,response.headers)
             return response.status
     except urllib.error.HTTPError as error:
-        raise GraphRejected("Microsoft Graph rejected the email request (HTTP %s)."%error.code) from None
+        capture(error.code,error.headers or {})
+        raise GraphRejected("Microsoft Graph rejected the email request (HTTP %s)."%error.code,error.code) from None

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.34 — 22 October 2026
+
+- Clarify provider acceptance versus recipient delivery, with provider-specific History labels and guidance for Sent Items, bounces, junk, quarantine and phishing filters.
+- Add expandable Email details with the latest 50 attempt references, queue/start/finish times in UK time, failure categories and safe provider response/request IDs.
+- Capture Microsoft HTTP/request IDs and numeric Retry-After without storing provider bodies; distinguish authentication, permissions, throttling, provider and connection failures.
+- Remove raw SMTP responses and exception details from delivery logs; retain safe correlation metadata without passwords, tokens, usernames or message content.
+- Preserve saved PDFs, recipients, numbering, manual retry and uncertain-send protections; mark historical diagnostics as unavailable rather than inventing past details.
+
 ## v0.33 — 16 October 2026
 
 - Add a key-authenticated private booking integration with review before invoice/contact creation and optional email through the existing provider/template.
