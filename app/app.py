@@ -51,6 +51,39 @@ def valid_date(v):
 def next_contact_id(c):
     return c.execute('SELECT COALESCE(MAX(id),0)+1 FROM (SELECT id FROM contacts UNION ALL SELECT id FROM retired_contact_ids)').fetchone()[0]
 
+def save_venue(c,raw):
+    name=clean(raw.get('name',''),200);address=clean(raw.get('address',''),500)
+    if not name:raise ValueError('Enter a venue name, such as the property address.')
+    identifier=raw.get('id')
+    existing=None
+    if identifier is not None:
+        if type(identifier) is not int or identifier<1:raise ValueError('Choose a valid venue to edit.')
+        existing=c.execute("SELECT * FROM contacts WHERE id=? AND kind='venue'",(identifier,)).fetchone()
+        if existing is None:raise ValueError('This venue no longer exists. Reload Venues; nothing was saved.')
+        if 'expected' in raw:
+            expected=raw['expected']
+            actual={key:existing[key] for key in ('name','address','assigned_contact_id')}
+            if not isinstance(expected,dict) or expected!=actual:
+                raise ValueError('This venue changed after you opened it. Click Edit again to review the latest details.')
+    # Older records may differ only in case. They remain editable by ID, but
+    # adding a duplicate or renaming into another record is never an upsert.
+    if existing is None or name!=existing['name']:
+        conflicts=[row for row in c.execute("SELECT id,name FROM contacts WHERE kind='venue'")
+                   if row['id']!=identifier and row['name'].strip().casefold()==name.casefold()]
+        if conflicts:
+            raise ValueError('A venue named "'+conflicts[0]['name']+'" already exists. Use Edit on that venue or enter a distinct property name. Nothing was overwritten.')
+    owner=raw.get('assigned_contact_id',existing['assigned_contact_id'] if existing else None)
+    if owner is not None and (type(owner) is not int or not c.execute("SELECT id FROM contacts WHERE kind='customer' AND id=?",(owner,)).fetchone()):
+        raise ValueError('Choose a valid saved contact, or Available to all contacts.')
+    if existing:
+        c.execute("UPDATE contacts SET name=?,address=?,assigned_contact_id=? WHERE id=? AND kind='venue'",(name,address,owner,identifier))
+    else:
+        identifier=next_contact_id(c)
+        c.execute("INSERT INTO contacts(id,kind,name,address,assigned_contact_id) VALUES(?,'venue',?,?,?)",(identifier,name,address,owner))
+    if owner is not None:c.execute('UPDATE contacts SET has_assigned_venues=1 WHERE id=?',(owner,))
+    return {'ok':True,'id':identifier,'created':existing is None}
+
+
 def invoice(raw):
     result={'customer':clean(raw.get('customer','')),'customer_address':clean(raw.get('customer_address',''),500),'customer_contact_name':clean(raw.get('customer_contact_name',''),200),'customer_email':clean(raw.get('customer_email',''),254),'date':valid_date(raw.get('date','')),'deposit':pence(raw.get('deposit',0)), 'lines':[]}
     if not result['customer']: raise ValueError('Choose or enter an invoice recipient.')
@@ -442,6 +475,10 @@ class Handler(BaseHTTPRequestHandler):
                     email=clean(raw.get('email',''),254) if kind=='customer' else ''
                     if email:email=invoice_mail.address(email)
                     c.execute('BEGIN IMMEDIATE')
+                    if kind=='venue':
+                        result=save_venue(c,raw)
+                        c.commit()
+                        return self.reply(200,result)
                     existing=c.execute('SELECT * FROM contacts WHERE kind=? AND name=?',(kind,name)).fetchone()
                     enabled=bool(raw.get('separate_numbering',False)) if kind=='customer' else False
                     prefix=clean(raw.get('invoice_prefix',existing['invoice_prefix'] if existing else ''),30) if kind=='customer' else ''
@@ -457,13 +494,6 @@ class Handler(BaseHTTPRequestHandler):
                         last=c.execute('SELECT COALESCE(MAX(sequence_number),0) FROM invoices WHERE contact_id=? AND number_prefix=?',(contact_id,prefix)).fetchone()[0]
                         if next_number<=last:raise ValueError('Next number must be higher than saved invoices for this contact and prefix.')
                     c.execute('INSERT INTO contacts(id,kind,name,address,contact_name,email,separate_numbering,invoice_prefix,next_invoice_number) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,name) DO UPDATE SET address=excluded.address, contact_name=excluded.contact_name, email=excluded.email, separate_numbering=excluded.separate_numbering, invoice_prefix=excluded.invoice_prefix,next_invoice_number=excluded.next_invoice_number',(existing['id'] if existing else next_contact_id(c),kind,name,address,contact_name,email,int(enabled),prefix,next_number))
-                    if kind=='venue' and 'assigned_contact_id' in raw:
-                        owner=raw['assigned_contact_id']
-                        if owner is not None:
-                            if type(owner) is not int or not c.execute("SELECT id FROM contacts WHERE kind='customer' AND id=?",(owner,)).fetchone():
-                                raise ValueError('Choose a valid saved contact, or Available to all contacts.')
-                            c.execute('UPDATE contacts SET has_assigned_venues=1 WHERE id=?',(owner,))
-                        c.execute("UPDATE contacts SET assigned_contact_id=? WHERE kind='venue' AND name=?",(owner,name))
                     if kind=='customer' and 'payment_term_days' in raw:
                         days=raw['payment_term_days']
                         if days in (None,''):days=None

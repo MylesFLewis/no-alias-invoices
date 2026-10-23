@@ -10,7 +10,7 @@ SOURCE=ROOT/'_build'
 VERSION=(SOURCE/'VERSION').read_text().strip()
 if not re.fullmatch(r'\d+\.\d+(?:\.\d+)?',VERSION):raise ValueError('Invalid version')
 files=['.dockerignore','CHANGELOG.md','Dockerfile','VERSION','app.py','documents.py','invoice_mail.py','mail_diagnostics.py','booking_import.py','email_templates.py','microsoft_graph.py','connect_microsoft.py','bootstrap.py','requirements.txt',
-       'static/app.js','static/index.html','static/style.css','static/email_editor.js','templates/invoice.docx','tests/test_invoice_email.py','tests/test_microsoft_connection.py','tests/test_email_templates.py','tests/test_booking_import.py','tests/test_mail_diagnostics.py','tests/test_inline_venues.py']
+       'static/app.js','static/index.html','static/style.css','static/email_editor.js','templates/invoice.docx','tests/test_invoice_email.py','tests/test_microsoft_connection.py','tests/test_email_templates.py','tests/test_booking_import.py','tests/test_mail_diagnostics.py','tests/test_inline_venues.py','tests/test_venue_editing.py']
 target=ROOT/'releases'/('no-alias-invoices-v'+VERSION+'.zip');target.parent.mkdir(exist_ok=True)
 with zipfile.ZipFile(target,'w',compression=zipfile.ZIP_DEFLATED) as archive:
     for name in files:

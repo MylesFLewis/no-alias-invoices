@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.36 — 23 October 2026
+
+- Edit venues by their saved ID so renaming keeps the same record, contact assignment and invoice dropdown selection instead of creating another venue.
+- Separate Add venue from Save venue changes, with clear edit status and Cancel edit; return to adding after a successful save.
+- Reject duplicate venue names when adding or renaming instead of silently updating another venue's address or assignment.
+- Detect stale venue edits, reject deleted/non-venue IDs, preserve legacy case-variant records for explicit editing, and keep saved invoice/PDF snapshots unchanged.
+- Keep the CSV preview/import update flow and inline invoice venue creation unchanged.
+
 ## v0.35 — 22 October 2026
 
 - Add Add new venue details... at the top of invoice service venue dropdowns, with inline venue name/address fields for the selected contact.
