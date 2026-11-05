@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add optional SMTP_FROM_NAME for a friendly invoice email sender name while keeping SMTP_FROM as the verified envelope sender.
+- Preserve existing SMTP/Graph provider selection, Microsoft account connections, and invoice email delivery behaviour.
+
 ## v0.36 — 23 October 2026
 
 - Edit venues by their saved ID so renaming keeps the same record, contact assignment and invoice dropdown selection instead of creating another venue.
