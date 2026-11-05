@@ -130,6 +130,13 @@ class InvoiceEmailTests(unittest.TestCase):
         message=args.args[0];self.assertEqual(args.kwargs['to_addrs'],['client@example.com'])
         self.assertEqual(args.kwargs['from_addr'],'sender@example.com')
         self.assertEqual(message['To'],'client@example.com');self.assertIsNone(message['Bcc'])
+        self.assertEqual(message['From'],'sender@example.com')
+        os.environ['SMTP_FROM_NAME']='No Alias Entertainment'
+        with patch('invoice_mail.smtplib.SMTP',return_value=smtp):
+            mail.deliver(job,b'%PDF exact saved',saved['number'],{})
+        self.assertEqual(smtp.send_message.call_args.args[0]['From'],'No Alias Entertainment <sender@example.com>')
+        self.assertEqual(smtp.send_message.call_args.kwargs['from_addr'],'sender@example.com')
+        os.environ.pop('SMTP_FROM_NAME')
         attachment=list(message.iter_attachments())[0]
         self.assertEqual(attachment.get_payload(decode=True),b'%PDF exact saved')
         self.assertEqual(attachment.get_filename(),'0001 Invoice.pdf')
@@ -217,6 +224,9 @@ class InvoiceEmailTests(unittest.TestCase):
         for field,value in [('SMTP_SECURITY','none'),('SMTP_PORT','0'),('SMTP_HOST','smtp.example.com\r\nBAD'),('SMTP_FROM','a@example.com,b@example.com'),('SMTP_PASSWORD','')]:
             original=os.environ[field];os.environ[field]=value
             self.assertFalse(mail.configuration_status()['configured']);os.environ[field]=original
+        os.environ['SMTP_FROM_NAME']='Bad\nBcc: injected@example.com'
+        self.assertFalse(mail.configuration_status()['configured'])
+        os.environ.pop('SMTP_FROM_NAME')
         self.assertEqual(self.request('/api/invoices',self.raw(),{'Content-Type':'application/json','Origin':'http://evil.example'})[0],403)
 
     def test_confirmed_smtp_rejections_are_failed_not_uncertain(self):
