@@ -9,7 +9,7 @@ import ssl
 import threading
 import time
 from email.message import EmailMessage
-from email.utils import formatdate
+from email.utils import formatdate, formataddr
 import email_templates
 import mail_diagnostics as diagnostics
 
@@ -50,7 +50,10 @@ def config():
         raise ValueError('Set both SMTP_USERNAME and SMTP_PASSWORD, or leave both blank.')
     try:sender=address(sender)
     except ValueError:raise ValueError('SMTP_FROM must be one valid sender email address.') from None
-    return dict(host=host,port=port,security=security,username=username,password=password,sender=sender)
+    sender_name=os.getenv('SMTP_FROM_NAME','').strip()
+    if len(sender_name)>100 or any(ord(c)<32 or ord(c)==127 for c in sender_name):
+        raise ValueError('SMTP_FROM_NAME must be a single-line display name of at most 100 characters.')
+    return dict(host=host,port=port,security=security,username=username,password=password,sender=sender,sender_name=sender_name)
 
 
 def configuration_status():
@@ -172,7 +175,7 @@ def message_for(job,pdf,number,settings,sender):
 def deliver(job,pdf,number,settings):
     try:options=config()
     except ValueError as error:raise DeliveryError(str(error),category='configuration') from None
-    message=message_for(job,pdf,number,settings,options['sender'])
+    message=message_for(job,pdf,number,settings,formataddr((options['sender_name'],options['sender'])))
     context=ssl.create_default_context();transmitting=False;server=None
     try:
         logging.info('Invoice SMTP: connecting to %s:%s using %s for invoice %s',options['host'],options['port'],options['security'],number)
